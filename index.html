@@ -455,7 +455,7 @@ sharedFrameNormalTex.anisotropy = 8;
 
 const frameSettings = {
   show3DFrame: false,    // real extruded 3D frame body (front/back/sides all real geometry)
-  show25DFrame: false   // flat textured "2.5D" plane trick
+  show25DFrame: true    // flat textured "2.5D" plane trick
 };
 
 const frameConfig = {
@@ -643,6 +643,21 @@ function createFrameSystem(config, colorTex, normalTex){
 
 const frameSystem = createFrameSystem(frameConfig, sharedFrameColorTex, sharedFrameNormalTex);
 
+// How much of the measured hole the artwork itself covers. 1.0 = exactly
+// the measured opening; a touch above 1.0 tucks the art's edge under the
+// frame's inner lip so no gap shows (the frame texture's inner edge has a
+// small amount of soft/antialiased feathering that 1.0 alone can reveal).
+const ART_FIT_SCALE = 1.05;
+
+// Shared position/rotation applied to every painting's frame+art as one
+// rigid unit, layered on top of each painting's own placement in the
+// gallery (aisle position, facing angle). Use this to nudge or rotate the
+// whole frame+art combo while testing alignment — every axis independent.
+const frameArtTransform = {
+  position: { x: 0, y: 0, z: 0 },     // local offset, world units
+  rotation: { x: 0, y: 0, z: 0 }      // radians, applied in XYZ order
+};
+
 
 
 PROJECTS.forEach((proj, i)=>{
@@ -667,9 +682,14 @@ function createPainting(proj){
   const group = new THREE.Group();
   const FW = frameSystem.width, FH = frameSystem.height;
 
+  // Frame + art live together in one sub-group so frameArtTransform can
+  // move/rotate them as a single rigid unit, independent of each
+  // painting's own placement in the gallery (set further below).
+  const frameArtGroup = new THREE.Group();
+
   // One call builds whichever of the two render modes are currently on in
   // frameSettings — real 3D body, flat 2.5D plane, both, or neither.
-  group.add(frameSystem.createInstance());
+  frameArtGroup.add(frameSystem.createInstance());
 
   // Canvas (placeholder art via CanvasTexture)
   const canvas = document.createElement('canvas');
@@ -708,12 +728,18 @@ function createPainting(proj){
 
   const canvasTex = new THREE.CanvasTexture(canvas);
   const art = new THREE.Mesh(
-    new THREE.PlaneGeometry(frameSystem.holeWidth * 0.94, frameSystem.holeHeight * 0.94),
+    new THREE.PlaneGeometry(frameSystem.holeWidth * ART_FIT_SCALE, frameSystem.holeHeight * ART_FIT_SCALE),
     new THREE.MeshStandardMaterial({ map: canvasTex, roughness:0.5, emissive:0xffffff, emissiveMap:canvasTex, emissiveIntensity:0.25 })
   );
   // sit slightly recessed within the real hole, like a canvas set back in a frame
   art.position.set(frameSystem.holeOffsetX, frameSystem.holeOffsetY, -frameSystem.depth*0.15);
-  group.add(art);
+  frameArtGroup.add(art);
+
+  // Apply the shared frame+art transform (position and rotation on every
+  // axis), then attach the whole rigid unit to the painting group.
+  frameArtGroup.position.set(frameArtTransform.position.x, frameArtTransform.position.y, frameArtTransform.position.z);
+  frameArtGroup.rotation.set(frameArtTransform.rotation.x, frameArtTransform.rotation.y, frameArtTransform.rotation.z);
+  group.add(frameArtGroup);
 
   // Spotlight from above, like a gallery pin-light
   const spot = new THREE.SpotLight(0xf0d9a8, 2.4, 26, Math.PI/6, 0.5, 1.2);
