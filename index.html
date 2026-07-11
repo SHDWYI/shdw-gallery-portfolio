@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>SHDWYI — Gallery</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <style>
   :root{
     --bg: #08080b;
@@ -18,7 +18,8 @@
 
   *{ margin:0; padding:0; box-sizing:border-box; }
   html, body{ width:100%; height:100%; overflow:hidden; background:var(--bg); font-family:'Space Grotesk', sans-serif; }
-  canvas{ display:block; }
+  body{ overscroll-behavior:none; -webkit-tap-highlight-color:transparent; }
+  canvas{ display:block; touch-action:none; }
 
   #hud{
     position:fixed; inset:0; pointer-events:none; z-index:10;
@@ -109,7 +110,26 @@
     transition:opacity 0.35s ease, transform 0.35s ease;
     pointer-events:none; z-index:10; text-align:center;
   }
-  #prompt.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  #prompt.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; cursor:pointer; }
+
+  /* --- Virtual joystick (touch devices only) --- */
+  #joystick{
+    position:fixed; left:22px; bottom:26px; width:124px; height:124px; z-index:12;
+    display:none; border-radius:50%;
+    background:rgba(10,11,17,0.35); border:1px solid rgba(255,255,255,0.16);
+    backdrop-filter:blur(6px); touch-action:none;
+  }
+  #joystick-knob{
+    position:absolute; left:50%; top:50%; width:54px; height:54px; border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(168,32,63,0.45); border:1px solid var(--crimson-glow);
+    box-shadow:0 0 14px rgba(255,59,92,0.35);
+    pointer-events:none;
+  }
+  body.touch #joystick{ display:block; }
+  /* keyboard hints are useless on touch — the joystick takes that corner */
+  body.touch #controls-panel{ display:none; }
+  body.touch #nav span{ padding:8px 4px; }
   #prompt .key{
     display:inline-block; border:1px solid var(--crimson-glow); color:var(--crimson-glow);
     border-radius:4px; padding:2px 9px; margin-right:8px; font-family:'Space Grotesk',sans-serif;
@@ -277,6 +297,8 @@
 
 <div id="prompt"><span class="key">E</span>step into the work</div>
 
+<div id="joystick"><div id="joystick-knob"></div></div>
+
 <div id="panel">
   <div class="panel-inner">
     <div class="eyebrow" id="p-eyebrow">Project 01</div>
@@ -368,17 +390,25 @@ const PROJECTS = [
 ];
 
 // ---------- Core setup ----------
+// touch-first devices (phones/tablets) get the joystick UI and a lighter render load
+const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+document.body.classList.add(IS_TOUCH ? 'touch' : 'no-touch');
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x06070c);
 scene.fog = new THREE.Fog(0x06070c, 16, 96);
 
 const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.1, 100);
 
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+const renderer = new THREE.WebGLRenderer({
+  antialias: !IS_TOUCH,                 // mobile GPUs: skip MSAA, high DPR covers it
+  powerPreference: 'high-performance'
+});
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
+// shadow maps stay off: no light in the scene has castShadow enabled, so the
+// shadow pass was pure overhead — re-enable if a shadow-casting light is added
+renderer.shadowMap.enabled = false;
 document.body.appendChild(renderer.domElement);
 
 // ---------- Room dimensions ----------
@@ -441,12 +471,13 @@ function makeSmokeTexture(){
   return new THREE.CanvasTexture(c);
 }
 const smokeTex = makeSmokeTexture();
+const smokeEnabled = false;   // room smoke layers — off for now, flip to true to restore
 const smokeLayers = [];
 const SMOKE_COUNT = 46;
 const SMOKE_X = 52;      // half-width the smoke field spans
 const SMOKE_Z_FRONT = 20;
 const SMOKE_Z_BACK = -80;
-for(let i=0;i<SMOKE_COUNT;i++){
+if(smokeEnabled) for(let i=0;i<SMOKE_COUNT;i++){
   const size = 16 + Math.random()*22;
   const mat = new THREE.MeshBasicMaterial({
     map: smokeTex, transparent: true,
@@ -473,8 +504,8 @@ for(let i=0;i<SMOKE_COUNT;i++){
   });
 }
 
-// dust motes floating throughout the space
-const DUST_COUNT = 320;
+// dust motes floating throughout the space (halved on touch devices)
+const DUST_COUNT = IS_TOUCH ? 160 : 320;
 const dustGeo = new THREE.BufferGeometry();
 const dustPos = new Float32Array(DUST_COUNT*3);
 for(let i=0;i<DUST_COUNT;i++){
@@ -1050,15 +1081,50 @@ addEventListener('keydown', e=>{
 addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
 
 let camYaw = 0, camPitch = 0.25, camDist = 5.2, camHeight = 2.0;
-let dragging = false, lastX=0, lastY=0;
-renderer.domElement.addEventListener('pointerdown', e=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; });
-addEventListener('pointerup', ()=> dragging=false);
+// look-drag is tracked per pointer id so a second finger (on the joystick) can't hijack it
+let lookPointerId = null, lastX=0, lastY=0;
+renderer.domElement.addEventListener('pointerdown', e=>{
+  if(lookPointerId !== null) return;
+  lookPointerId = e.pointerId; lastX=e.clientX; lastY=e.clientY;
+});
+addEventListener('pointerup', e=>{ if(e.pointerId===lookPointerId) lookPointerId=null; });
+addEventListener('pointercancel', e=>{ if(e.pointerId===lookPointerId) lookPointerId=null; });
 addEventListener('pointermove', e=>{
-  if(!dragging) return;
+  if(e.pointerId !== lookPointerId) return;
   camYaw   -= (e.clientX-lastX) * 0.006;
   camPitch  = Math.max(-1.45, Math.min(1.45, camPitch + (e.clientY-lastY)*0.004));
   lastX = e.clientX; lastY = e.clientY;
 });
+
+// ---------- Virtual joystick (movement on touch devices) ----------
+const joyState = { active:false, id:null, x:0, y:0 };
+const joyEl = document.getElementById('joystick');
+const joyKnob = document.getElementById('joystick-knob');
+const JOY_R = 44;   // max knob travel in px
+function setKnob(dx,dy){ joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; }
+function handleJoy(e){
+  const r = joyEl.getBoundingClientRect();
+  let dx = e.clientX - (r.left + r.width/2);
+  let dy = e.clientY - (r.top + r.height/2);
+  const d = Math.hypot(dx, dy);
+  if(d > JOY_R){ dx = dx/d*JOY_R; dy = dy/d*JOY_R; }
+  joyState.x = dx/JOY_R; joyState.y = dy/JOY_R;
+  setKnob(dx, dy);
+}
+function endJoy(e){
+  if(e.pointerId !== joyState.id) return;
+  joyState.active = false; joyState.id = null;
+  joyState.x = joyState.y = 0;
+  setKnob(0, 0);
+}
+joyEl.addEventListener('pointerdown', e=>{
+  joyState.active = true; joyState.id = e.pointerId;
+  joyEl.setPointerCapture(e.pointerId);
+  handleJoy(e);
+});
+joyEl.addEventListener('pointermove', e=>{ if(e.pointerId===joyState.id) handleJoy(e); });
+joyEl.addEventListener('pointerup', endJoy);
+joyEl.addEventListener('pointercancel', endJoy);
 
 let facing = Math.PI; // character yaw
 let nearestPainting = null;
@@ -1075,9 +1141,23 @@ function updateMovement(dt){
   if(keys['a']) move.sub(right);
   if(keys['d']) move.add(right);
 
-  const moving = move.lengthSq() > 0;
+  // joystick input joins the same move vector (up on the stick = away from camera,
+  // matching W); pushing to the outer edge breaks into a run
+  let mag = 1, joyRun = false;
+  if(joyState.active){
+    const jm = Math.hypot(joyState.x, joyState.y);
+    if(jm > 0.15){   // dead zone
+      move.addScaledVector(forward, joyState.y);
+      move.addScaledVector(right, joyState.x);
+      mag = Math.min(1, jm);
+      joyRun = jm > 0.92;
+    }
+  }
+
+  const moving = move.lengthSq() > 0.0001;
   if(moving){
-    const speed = keys['shift'] ? 5.8 : 3.2;
+    const running = keys['shift'] || joyRun;
+    const speed = (running ? 5.8 : 3.2) * mag;
     move.normalize().multiplyScalar(speed*dt);
     character.position.add(move);
     const targetFacing = Math.atan2(move.x, move.z);
@@ -1085,7 +1165,7 @@ function updateMovement(dt){
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     facing += diff * Math.min(1, dt*10);
 
-    const walkT = performance.now()*(keys['shift'] ? 0.013 : 0.008);
+    const walkT = performance.now()*(running ? 0.013 : 0.008);
     hipL.rotation.x = Math.sin(walkT)*0.6;
     hipR.rotation.x = Math.sin(walkT+Math.PI)*0.6;
     shoulderL.rotation.x = Math.sin(walkT+Math.PI)*0.5;
@@ -1319,6 +1399,15 @@ document.querySelectorAll('#nav span[data-page]').forEach(el=>{
 });
 document.getElementById('page-close').addEventListener('click', closePage);
 addEventListener('keydown', e=>{ if(e.key === 'Escape' && pageOpen) closePage(); });
+
+// ---------- Touch UI wiring ----------
+// the prompt doubles as the interact button — tapping (or clicking) it enters the work
+document.getElementById('prompt').addEventListener('click', ()=> tryEnterPainting());
+if(IS_TOUCH){
+  document.getElementById('prompt').innerHTML = '<span class="key">TAP</span>step into the work';
+  document.querySelector('#info-panel .info-text').innerHTML =
+    'Move with the stick, drag anywhere to look around, and tap the prompt when it appears.';
+}
 
 // ---------- Resize ----------
 addEventListener('resize', ()=>{
