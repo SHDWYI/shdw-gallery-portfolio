@@ -329,7 +329,8 @@ const PROJECTS = [
     subtitle: 'Underwater Horror',
     desc: 'A first-person underwater horror experience. Descend into a drowned world where light is scarce and something is watching from the dark.',
     tags: ['Unreal Engine 5', 'Gameplay Programming'],
-    color: 0x0e3a52, accent: 0x4fc3ff
+    color: 0x0e3a52, accent: 0x4fc3ff,
+    art: 'assets/art/abyss.png'
   },
   {
     id: 1, eyebrow: 'Project 02',
@@ -337,7 +338,8 @@ const PROJECTS = [
     subtitle: 'Beyond the Dead',
     desc: 'A narrative-driven exploration game about the traces people leave behind. Built around environmental storytelling and quiet dread.',
     tags: ['Unity', 'Game Design'],
-    color: 0x241c28, accent: 0x9a86b8
+    color: 0x241c28, accent: 0x9a86b8,
+    art: 'assets/art/echoes.png'
   },
   {
     id: 2, eyebrow: 'Project 03',
@@ -345,7 +347,8 @@ const PROJECTS = [
     subtitle: 'AI Productivity',
     desc: 'An AI-powered productivity coach for structured daily focus — time-blocking, direct actionable guidance, and creative project momentum.',
     tags: ['Fullstack Development', 'AI'],
-    color: 0x2a2440, accent: 0xa88bff
+    color: 0x2a2440, accent: 0xa88bff,
+    art: 'assets/art/coach.png'
   },
   {
     id: 3, eyebrow: 'Project 04',
@@ -353,7 +356,8 @@ const PROJECTS = [
     subtitle: 'Interactive Fiction',
     desc: 'A surreal, philosophical short fiction experience following a teenage protagonist through a slow, existential fall — raw, minimal prose.',
     tags: ['Fiction', 'Interactive'],
-    color: 0x1c1a1f, accent: 0xb8b2a8
+    color: 0x1c1a1f, accent: 0xb8b2a8,
+    art: 'assets/art/chronos.png'
   },
   {
     id: 4, eyebrow: 'Project 05',
@@ -361,7 +365,8 @@ const PROJECTS = [
     subtitle: 'Visual Design',
     desc: 'A dark visual identity exploration — typography, texture, and restraint in service of mood.',
     tags: ['Design', 'Art Direction'],
-    color: 0x201c1f, accent: 0x8a8f9a
+    color: 0x201c1f, accent: 0x8a8f9a,
+    art: 'assets/art/requiem.png'
   },
   {
     id: 5, eyebrow: 'Project 06',
@@ -369,7 +374,8 @@ const PROJECTS = [
     subtitle: 'Branding',
     desc: 'The SHDWYI brand identity — monogram, visual language, and cinematic direction across every touchpoint of the channel and portfolio.',
     tags: ['Identity', 'Visual Direction'],
-    color: 0x1a1620, accent: 0xd8dce6
+    color: 0x1a1620, accent: 0xd8dce6,
+    art: 'assets/art/rebirth.png'
   },
   {
     id: 6, eyebrow: 'Project 07',
@@ -377,7 +383,8 @@ const PROJECTS = [
     subtitle: 'Character Design',
     desc: 'Original character concept — codename MIRAGE. A street magician with a Killua/Gojo-inspired presence: full character bible, ability set, and cinematic mood board.',
     tags: ['Concept Art', 'Storytelling'],
-    color: 0x3a0e1c, accent: 0xff3b5c
+    color: 0x3a0e1c, accent: 0xff3b5c,
+    art: 'assets/art/ren-ashveil.png'
   },
   {
     id: 7, eyebrow: 'Project 08',
@@ -385,7 +392,8 @@ const PROJECTS = [
     subtitle: 'AI Coach',
     desc: 'A React-based job application assistant — profile storage, tailored cover letters, and a Kanban pipeline tracker for the full job hunt.',
     tags: ['Fullstack Development', 'AI Integration'],
-    color: 0x241418, accent: 0xe0324a
+    color: 0x241418, accent: 0xe0324a,
+    art: 'assets/art/forge.png'
   }
 ];
 
@@ -905,6 +913,32 @@ function createPainting(proj){
   // sit slightly recessed within the real hole, like a canvas set back in a frame
   art.position.set(frameSystem.holeOffsetX, frameSystem.holeOffsetY, frameSystem.getFrontSurfaceZ() - ART_TO_FRAME_GAP);
   frameArtGroup.add(art);
+
+  // Real artwork: if this project names an image, load it and swap it in over
+  // the procedural placeholder (which remains the loading/fallback state).
+  const ART_VERSION = 2;
+  if(proj.art){
+    const img = new Image();
+    img.onload = () => {
+      // cover-crop onto a canvas matching the frame opening's aspect (0.639)
+      // so any input image fills the frame without stretching
+      const AW = 1024, AH = 1602;
+      const ac = document.createElement('canvas'); ac.width = AW; ac.height = AH;
+      const actx = ac.getContext('2d');
+      const s = Math.max(AW/img.width, AH/img.height);
+      const dw = img.width*s, dh = img.height*s;
+      actx.drawImage(img, (AW-dw)/2, (AH-dh)/2, dw, dh);
+      const tex = new THREE.CanvasTexture(ac);
+      tex.anisotropy = 8;
+      art.material.map = tex;
+      art.material.emissiveMap = tex;
+      art.material.needsUpdate = true;
+    };
+    img.onerror = () => console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
+    // versioned URL so swapping/replacing an image busts the browser cache —
+    // bump ART_VERSION whenever a picture in assets/art/ changes
+    img.src = proj.art + '?v=' + ART_VERSION;
+  }
 
   // Apply the shared frame+art transform (position and rotation on every
   // axis), then attach the whole rigid unit to the painting group.
