@@ -1410,7 +1410,7 @@ addEventListener('keydown', e=>{
 });
 addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
 
-let camYaw = 0, camPitch = 0.25, camDist = 5.2, camHeight = 2.0;
+let camYaw = 0, camPitch = -0.05, camDist = 5.2, camHeight = 2.0;
 // look-drag is tracked per pointer id so a second finger (on the joystick) can't hijack it
 let lookPointerId = null, lastX=0, lastY=0;
 renderer.domElement.addEventListener('pointerdown', e=>{
