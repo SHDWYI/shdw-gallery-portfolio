@@ -38,14 +38,36 @@
     font-size:clamp(14px, 1.1vw + 8px, 19px);
     letter-spacing:clamp(0.22em, 0.8vw, 0.42em); text-transform:uppercase;
     color:var(--ink); font-weight:600; white-space:nowrap;
+    display:flex; align-items:center; gap:clamp(10px, 1.4vw, 18px);
   }
-  #title span{ color:var(--crimson-glow); }
+  #title .t-red{ color:var(--crimson-glow); }
   #nav{ display:flex; align-items:center; gap:clamp(14px, 2.8vw, 34px); flex-wrap:wrap; justify-content:flex-end; }
   #nav span{
     font-size:clamp(10px, 0.5vw + 7px, 12px); letter-spacing:0.18em; color:#b9b3ac; text-transform:uppercase;
     pointer-events:auto; cursor:pointer; transition:color 0.25s ease;
   }
   #nav span:hover{ color:var(--crimson-glow); }
+  /* vinyl record sound toggle — spins while playing, freezes when muted */
+  #mute-btn{
+    width:32px; height:32px; flex:none; border-radius:50%;
+    padding:0; cursor:pointer; pointer-events:auto;
+    background:
+      radial-gradient(circle, #08080b 0 2.5px, transparent 2.5px),
+      radial-gradient(circle, var(--crimson) 0 9px, rgba(0,0,0,0) 9px),
+      repeating-radial-gradient(circle at 50% 50%, #17171b 0 1.5px, #26262c 1.5px 3px);
+    border:1px solid rgba(255,255,255,0.18);
+    box-shadow:0 0 10px rgba(0,0,0,0.6), inset 0 0 6px rgba(255,255,255,0.06);
+    animation:vinyl-spin 3.2s linear infinite;
+    transition:opacity 0.3s ease, box-shadow 0.3s ease;
+    position:relative;
+  }
+  #mute-btn::after{  /* light glint across the grooves */
+    content:''; position:absolute; inset:2px; border-radius:50%;
+    background:linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 38%);
+  }
+  #mute-btn:hover{ box-shadow:0 0 12px rgba(255,59,92,0.45), inset 0 0 6px rgba(255,255,255,0.06); }
+  #mute-btn.muted{ animation-play-state:paused; opacity:0.45; }
+  @keyframes vinyl-spin{ to{ transform:rotate(360deg); } }
   #nav .nav-cta{
     border:1px solid rgba(200,190,180,0.4); border-radius:24px;
     padding:clamp(8px, 1.1vw, 11px) clamp(15px, 2.2vw, 26px); color:var(--ink);
@@ -65,7 +87,27 @@
   .panel-label{
     font-size:10px; letter-spacing:0.28em; text-transform:uppercase;
     color:var(--crimson-glow); margin-bottom:16px;
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    cursor:pointer; pointer-events:auto; user-select:none;
   }
+  .panel-label::after{
+    content:'—'; font-size:11px; color:var(--ink-dim); font-family:'Space Grotesk',sans-serif;
+  }
+  /* clicking a panel's label collapses it down to just the title bar */
+  #controls-panel.collapsed > :not(.panel-label),
+  #info-panel.collapsed > :not(.panel-label){ display:none; }
+  #controls-panel.collapsed, #info-panel.collapsed{ min-width:0; }
+  .collapsed .panel-label{ margin-bottom:0; }
+  .collapsed .panel-label::after{ content:'+'; }
+
+  /* touch-only next-song button inside the info panel */
+  #touch-next{
+    margin-top:14px; padding:10px 0; text-align:center;
+    border:1px solid rgba(255,255,255,0.18); border-radius:6px;
+    font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:var(--ink);
+    cursor:pointer; pointer-events:auto;
+  }
+  #touch-next:active{ border-color:var(--crimson-glow); color:var(--crimson-glow); }
   .ctl-row{ display:flex; align-items:center; gap:7px; margin-bottom:11px; }
   .ctl-row:last-child{ margin-bottom:0; }
   .ctl-txt{ font-size:12px; letter-spacing:0.06em; color:#c4beb7; margin-left:6px; text-transform:uppercase; }
@@ -142,41 +184,140 @@
   }
   #fade.on{ opacity:1; }
 
-  #panel{
-    position:fixed; inset:0; z-index:30; display:none;
-    align-items:center; justify-content:center;
-    background:radial-gradient(circle at 50% 40%, #14111a 0%, #08080b 75%);
-  }
-  #panel.show{ display:flex; }
-  .panel-inner{
-    max-width:640px; width:88%; opacity:0; transform:translateY(16px);
-    transition:opacity 0.3s ease, transform 0.3s ease;
-  }
-  #panel.reveal .panel-inner{ opacity:1; transform:translateY(0); }
-
   .eyebrow{
     font-size:11px; letter-spacing:0.3em; text-transform:uppercase; color:var(--crimson-glow);
     margin-bottom:14px;
   }
-  .p-title{
-    font-family:'Cormorant Garamond', serif; font-size:44px; color:var(--ink);
-    line-height:1.05; margin-bottom:18px; font-weight:600;
+
+  /* ============================================================
+     PROJECT PAGE — full-screen showcase, rendered from PROJECTS
+     data (see each project's `page` object). Amber-accented to
+     match the concept design.
+     ============================================================ */
+  #project-page{
+    position:fixed; inset:0; z-index:30; display:none; overflow-y:auto;
+    background:#0b0a0e; opacity:0; transition:opacity 0.3s ease;
   }
-  .p-desc{
-    font-size:14.5px; line-height:1.75; color:#c9c3bc; margin-bottom:26px; font-weight:400;
+  #project-page.show{ display:block; }
+  #project-page.reveal{ opacity:1; }
+  .pp-layout{ display:flex; min-height:100%; align-items:stretch; }
+  .pp-side{
+    width:190px; flex:none; position:sticky; top:0; height:100vh;
+    display:flex; flex-direction:column; justify-content:space-between;
+    padding:36px 26px; border-right:1px solid rgba(255,255,255,0.07);
   }
-  .p-tags{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:34px; }
-  .p-tags span{
-    font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
-    border:1px solid #3a3540; color:var(--ink-dim); padding:5px 11px; border-radius:2px;
+  .pp-logo{
+    font-family:'Cormorant Garamond',serif; font-size:17px; font-weight:600;
+    letter-spacing:0.32em; color:var(--ink); margin-bottom:44px;
   }
-  #back-btn{
-    pointer-events:auto; cursor:pointer;
-    background:none; border:1px solid var(--crimson); color:var(--ink);
-    font-family:'Space Grotesk', sans-serif; font-size:12px; letter-spacing:0.14em;
-    text-transform:uppercase; padding:13px 26px; transition:all 0.25s ease;
+  .pp-logo span{ color:var(--amber); }
+  .pp-nav a{
+    display:block; font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
+    color:#8f8a84; margin-bottom:20px; cursor:pointer; text-decoration:none;
+    transition:color 0.2s ease; border-left:2px solid transparent; padding-left:12px;
   }
-  #back-btn:hover{ background:var(--crimson); box-shadow:0 0 24px rgba(168,32,63,0.5); }
+  .pp-nav a:hover{ color:var(--ink); }
+  .pp-nav a.active{ color:var(--ink); border-left-color:var(--amber); }
+  .pp-copy{ font-size:10px; color:#575249; line-height:1.7; }
+  .pp-main{ flex:1; min-width:0; padding:38px 46px 90px; max-width:1320px; }
+  .pp-back{
+    display:inline-block; font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
+    color:#8f8a84; cursor:pointer; margin-bottom:34px; transition:color 0.2s ease;
+  }
+  .pp-back:hover{ color:var(--amber); }
+
+  .pp-header{ display:grid; grid-template-columns:minmax(300px,5fr) 7fr; gap:46px; margin-bottom:44px; }
+  .pp-eyebrow{ color:var(--amber); font-size:11px; letter-spacing:0.3em; text-transform:uppercase; margin-bottom:18px; }
+  .pp-title{
+    font-family:'Cormorant Garamond',serif; font-size:clamp(32px,3.6vw,54px);
+    color:var(--ink); line-height:1.04; font-weight:600; text-transform:uppercase; margin-bottom:12px;
+  }
+  .pp-sub{ font-size:15px; color:#d8d2cb; margin-bottom:20px; }
+  .pp-desc{ font-size:13.5px; line-height:1.8; color:#a9a29b; margin-bottom:24px; max-width:430px; }
+  .pp-facts{ display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px; }
+  .pp-facts span{ font-size:12px; color:#c4beb7; display:flex; align-items:center; gap:8px; }
+  .pp-facts span::before{ content:''; width:5px; height:5px; background:var(--amber); transform:rotate(45deg); flex:none; }
+  .pp-actions{ display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  .pp-btn{
+    display:inline-block; border:1px solid var(--amber); color:var(--ink); background:none;
+    padding:12px 22px; font-family:'Space Grotesk',sans-serif; font-size:11px;
+    letter-spacing:0.18em; text-transform:uppercase; cursor:pointer; text-decoration:none;
+    transition:all 0.22s ease;
+  }
+  .pp-btn:hover{ background:rgba(232,184,116,0.12); }
+  .pp-btn.ghost{ border-color:rgba(255,255,255,0.18); color:#c4beb7; }
+  .pp-btn.ghost:hover{ border-color:var(--amber); color:var(--ink); background:none; }
+  .pp-btn.disabled{ opacity:0.4; cursor:default; pointer-events:none; }
+
+  .pp-hero-main{
+    width:100%; aspect-ratio:16/9; object-fit:cover; display:block;
+    border:1px solid rgba(255,255,255,0.09); border-radius:6px; background:#101014;
+  }
+  .pp-thumbs{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-top:12px; }
+  .pp-thumb{
+    aspect-ratio:16/10; width:100%; object-fit:cover; border-radius:4px;
+    border:1px solid rgba(255,255,255,0.1); cursor:pointer; opacity:0.7; transition:all 0.2s ease;
+  }
+  .pp-thumb:hover{ opacity:1; }
+  .pp-thumb.on{ border-color:var(--amber); opacity:1; }
+  .pp-ph{
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    background:#141318; border:1px dashed rgba(255,255,255,0.12); border-radius:4px;
+    color:#575249; font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+    padding:6px; cursor:default;
+  }
+  .pp-thumbs .pp-ph{ aspect-ratio:16/10; }
+
+  .pp-sections{
+    display:grid; grid-template-columns:1fr 1fr 1.25fr; gap:44px;
+    border-top:1px solid rgba(255,255,255,0.07); padding-top:38px; margin-bottom:48px;
+  }
+  .pp-h2{ font-size:11px; letter-spacing:0.3em; text-transform:uppercase; color:var(--ink); margin-bottom:22px; }
+  .pp-about p{ font-size:13px; line-height:1.85; color:#a9a29b; }
+  .pp-quote{
+    border:1px solid rgba(232,184,116,0.25); background:rgba(232,184,116,0.05);
+    padding:18px 20px; margin-top:24px;
+    font-family:'Cormorant Garamond',serif; font-style:italic;
+    font-size:16.5px; line-height:1.55; color:var(--amber);
+  }
+  .pp-feature{ display:flex; gap:14px; margin-bottom:22px; }
+  .pp-fico{
+    width:36px; height:36px; flex:none; border:1px solid rgba(255,255,255,0.16); border-radius:50%;
+    display:flex; align-items:center; justify-content:center; color:var(--amber); font-size:13px;
+  }
+  .pp-feature b{ display:block; font-size:13px; color:var(--ink); font-weight:500; margin-bottom:4px; }
+  .pp-feature p{ font-size:11.5px; line-height:1.65; color:#8f8a84; }
+  .pp-gallery{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .pp-gallery img, .pp-gallery .pp-ph{ aspect-ratio:16/10; width:100%; object-fit:cover; border-radius:4px; border:1px solid rgba(255,255,255,0.09); }
+  .pp-gbtn{ margin-top:14px; text-align:center; }
+
+  .pp-bottom{
+    display:grid; grid-template-columns:1.25fr 1fr 1fr; gap:44px;
+    border-top:1px solid rgba(255,255,255,0.07); padding-top:38px;
+  }
+  .pp-bts{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .pp-bts img, .pp-bts .pp-ph{ aspect-ratio:4/3; width:100%; object-fit:cover; border-radius:4px; border:1px solid rgba(255,255,255,0.09); }
+  .pp-note{ font-size:11px; color:#8f8a84; margin-bottom:16px; letter-spacing:0.04em; }
+  .pp-role-line{ font-size:14px; color:#d8d2cb; line-height:1.7; margin-bottom:18px; }
+  .pp-role-list{ list-style:none; }
+  .pp-role-list li{
+    position:relative; padding-left:16px; margin-bottom:8px;
+    font-size:11.5px; line-height:1.6; color:#8f8a84;
+  }
+  .pp-role-list li::before{ content:''; position:absolute; left:0; top:8px; width:7px; height:1px; background:var(--amber); }
+  .pp-tech{ display:flex; flex-wrap:wrap; gap:10px; }
+  .pp-tech span{
+    font-size:11px; letter-spacing:0.06em; color:#c4beb7;
+    border:1px solid rgba(255,255,255,0.14); border-radius:4px;
+    background:rgba(255,255,255,0.03); padding:8px 14px;
+  }
+
+  @media (max-width: 1020px){
+    .pp-side{ display:none; }
+    .pp-main{ padding:26px 22px 70px; }
+    .pp-header{ grid-template-columns:1fr; gap:30px; }
+    .pp-sections, .pp-bottom{ grid-template-columns:1fr; gap:34px; }
+  }
 
   /* --- Mock nav pages (About / Skills / Experience / Contact) --- */
   #page{
@@ -264,6 +405,31 @@
     font-family:'Cormorant Garamond', serif; font-style:italic; color:var(--ink-dim);
     letter-spacing:0.08em; font-size:15px; transition:opacity 0.8s ease;
   }
+  #loading.ready{ cursor:pointer; }
+  .load-title{
+    font-family:'Cormorant Garamond', serif; font-style:normal; font-weight:600;
+    font-size:30px; letter-spacing:0.42em; color:var(--ink);
+    text-align:center; margin-bottom:16px;
+  }
+  .load-title span{ color:var(--crimson-glow); }
+  .load-sub{
+    text-align:center; font-size:16px; color:#a89f96;
+    letter-spacing:0.1em; margin-bottom:30px;
+  }
+  .load-hint{ text-align:center; font-size:14px; color:var(--ink-dim); animation:loadpulse 2.6s ease-in-out infinite; }
+  @keyframes loadpulse{ 0%,100%{ opacity:0.4; } 50%{ opacity:1; } }
+
+  /* now-playing toast */
+  #track-toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(8px);
+    font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
+    color:#c4beb7; background:rgba(10,11,17,0.65); backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:9px 20px;
+    opacity:0; transition:opacity 0.4s ease, transform 0.4s ease;
+    pointer-events:none; z-index:11; white-space:nowrap; max-width:88vw;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  #track-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -273,7 +439,7 @@
 
 <div id="hud">
   <div id="topbar">
-    <div id="title">SHDW<span>YI</span>&nbsp;—&nbsp;GALLERY</div>
+    <div id="title"><span>SHDW<span class="t-red">YI</span></span><span id="mute-btn" title="Toggle sound (M)"></span><span>GALLERY</span></div>
     <div id="nav">
       <span data-page="about">ABOUT</span><span data-page="skills">SKILLS</span><span data-page="experience">EXPERIENCE</span>
       <span class="nav-cta" data-page="contact">CONTACT</span>
@@ -286,6 +452,8 @@
     <div class="ctl-row"><span class="key wide">Shift</span><span class="ctl-txt">Run</span></div>
     <div class="ctl-row"><span class="key">🖱</span><span class="ctl-txt">Look around</span></div>
     <div class="ctl-row"><span class="key">E</span><span class="ctl-txt">Interact</span></div>
+    <div class="ctl-row"><span class="key">N</span><span class="ctl-txt">Next song</span></div>
+    <div class="ctl-row"><span class="key">M</span><span class="ctl-txt">Sound on/off</span></div>
   </div>
 
   <div id="info-panel">
@@ -299,15 +467,11 @@
 
 <div id="joystick"><div id="joystick-knob"></div></div>
 
-<div id="panel">
-  <div class="panel-inner">
-    <div class="eyebrow" id="p-eyebrow">Project 01</div>
-    <div class="p-title" id="p-title">Title</div>
-    <div class="p-desc" id="p-desc">Description</div>
-    <div class="p-tags" id="p-tags"></div>
-    <button id="back-btn">← Back to the gallery</button>
-  </div>
-</div>
+<div id="track-toast"></div>
+
+<!-- Full project showcase page — content is rendered from each project's
+     `page` object in PROJECTS; nothing in here is hand-written per project -->
+<div id="project-page"></div>
 
 <div id="page">
   <button id="page-close">✕&nbsp;&nbsp;Close</button>
@@ -322,90 +486,210 @@
    ========================================================= */
 
 // ---------- Project data (titles from concept — swap in real content) ----------
+// Project data sourced from https://shdwyi.framer.ai/ (May 2026).
+// `role`/`meta` are optional — panels hide those sections when absent.
+// REQUIEM and REBIRTH descriptions are placeholders (not on the site yet).
 const PROJECTS = [
   {
-    id: 0, eyebrow: 'Project 01',
-    title: 'ABYSS',
-    subtitle: 'Underwater Horror',
-    desc: 'A first-person underwater horror experience. Descend into a drowned world where light is scarce and something is watching from the dark.',
-    tags: ['Unreal Engine 5', 'Gameplay Programming'],
+    id: 0, eyebrow: 'Game — SHXDW',
+    title: 'PROJECT: ABYSS',
+    subtitle: 'First-person underwater horror / exploration',
+    desc: 'A first-person underwater horror and exploration game, built end-to-end as both developer and artist. Gameplay systems are architected in Unreal Engine Blueprints and C# with an emphasis on performance and scalability, and asset creation spans the entire pipeline — concept through integration.',
+    role: [
+      'Architected gameplay systems in Unreal Engine (Blueprints) and C#',
+      'Modeled, sculpted and textured environments and props',
+      'UI/UX direction for the majority of in-game interfaces and iconography',
+      'Sound design and audio integration to deepen immersion'
+    ],
+    meta: { Tools: 'Unreal Engine (Blueprints), C#', Duration: '1 year' },
+    tags: ['Game', 'Unreal Engine', 'C#'],
     color: 0x0e3a52, accent: 0x4fc3ff,
-    art: 'assets/art/abyss.png'
+    art: 'assets/art/abyss.png',
+    page: {
+      eyebrow: 'Featured Project',
+      role: 'Developer & Artist — full pipeline',
+      facts: ['1 Year', 'Unreal Engine', 'C#', 'Single Player'],
+      links: { trailer: '', store: '', storeLabel: 'View on itch.io' },
+      about: 'Project: Abyss is a first-person underwater horror and exploration game built end-to-end as both developer and artist. Gameplay systems are architected in Unreal Engine Blueprints and C# with an emphasis on performance and scalability.',
+      quote: '',
+      features: [
+        { title: 'Gameplay Systems', desc: 'Architected in Unreal Engine Blueprints and C# with emphasis on performance and scalability.' },
+        { title: 'Full Asset Pipeline', desc: 'Modeling, sculpting and texturing of environments and props — concept through integration.' },
+        { title: 'UI/UX Direction', desc: 'Majority of in-game interfaces and iconography.' },
+        { title: 'Sound Design', desc: 'Audio design and integration to deepen immersion.' }
+      ],
+      tech: ['Unreal Engine', 'Blueprints', 'C#'],
+      gallery: [], behindScenes: []
+    }
   },
   {
-    id: 1, eyebrow: 'Project 02',
-    title: 'ECHOES',
-    subtitle: 'Beyond the Dead',
-    desc: 'A narrative-driven exploration game about the traces people leave behind. Built around environmental storytelling and quiet dread.',
-    tags: ['Unity', 'Game Design'],
+    id: 1, eyebrow: 'Game — SHXDW Labs',
+    title: 'ECHOES BEYOND THE DEAD',
+    subtitle: 'First-person zombie survival',
+    desc: 'A first-person zombie survival project focused on responsive gameplay animation and player immersion — independently developed from concept through final implementation.',
+    role: [
+      'Animation systems in Unity Animator Controller — state machines and blend trees',
+      'Keyframe animation for player movement, combat and interactions',
+      'IK rigging and root motion for realism and responsiveness',
+      'Gameplay mechanics, player controls, UI and interaction flows'
+    ],
+    meta: { Tools: 'Unity, Animator Controller, IK rigging' },
+    tags: ['Game', 'Unity', 'Animation'],
     color: 0x241c28, accent: 0x9a86b8,
-    art: 'assets/art/echoes.png'
+    art: 'assets/art/echoes.png',
+    page: {
+      eyebrow: 'Featured Project',
+      role: 'Programmer, Gameplay Designer, UI/UX Designer',
+      facts: ['2024', 'Unity', 'C#', 'Single Player'],
+      links: { trailer: '', trailerLabel: 'Watch Trailer', store: '', storeLabel: 'View on itch.io' },
+      about: 'Echoes Beyond the Dead is a solo-developed survival horror game that combines tense combat, resource management, and story-driven exploration. The goal was to create an experience that feels unforgiving, atmospheric, and emotionally impactful.',
+      quote: "It's not just about surviving the undead, it's about facing what's left of humanity.",
+      features: [
+        { title: 'Immersive Atmosphere', desc: 'Dynamic lighting, realistic sound design, and environmental storytelling.' },
+        { title: 'Tactical Gameplay', desc: 'Limited resources and intelligent enemy AI create intense, strategic encounters.' },
+        { title: 'Interactive World', desc: 'Explore a hand-crafted world filled with lore, secrets, and optional challenges.' },
+        { title: 'Custom Systems', desc: 'Built custom inventory, crafting, and AI systems in C#.' }
+      ],
+      tech: ['Unity', 'C#', 'Visual Studio', 'Blender', 'Photoshop', 'FMOD', 'Git', 'Trello'],
+      gallery: [], behindScenes: []
+    }
   },
   {
-    id: 2, eyebrow: 'Project 03',
-    title: 'COACH',
-    subtitle: 'AI Productivity',
-    desc: 'An AI-powered productivity coach for structured daily focus — time-blocking, direct actionable guidance, and creative project momentum.',
-    tags: ['Fullstack Development', 'AI'],
+    id: 2, eyebrow: '3D Character — SHXDW',
+    title: 'RED SHADOW',
+    subtitle: 'AI-directed character design',
+    desc: 'A striking, red-haired warrior with piercing blue eyes and a regal circlet, blending elegance and resilience; his scarred nose and fur-lined cloak hint at a battle-hardened past beneath a composed, noble presence.',
+    role: [
+      'Original character created with multiple AI models — visual style directed and outputs refined for a cohesive, high-quality design',
+      'Video showcase produced to highlight personality, design details and artistic vision'
+    ],
+    meta: { Tools: 'AI models, video production', Time: '3 hrs' },
+    tags: ['3D Character', 'AI Art Direction'],
     color: 0x2a2440, accent: 0xa88bff,
-    art: 'assets/art/coach.png'
+    art: 'assets/art/red-shadow.png',
+    page: {
+      eyebrow: '3D Character',
+      role: 'Character Designer & Art Director',
+      facts: ['3 hrs', 'AI-directed', 'Video Showcase'],
+      links: { trailer: '', trailerLabel: 'Watch Showcase', store: '', storeLabel: 'View Project' },
+      features: [
+        { title: 'AI Art Direction', desc: 'Original character created with multiple AI models, directing visual style and refining outputs for a cohesive, high-quality design.' },
+        { title: 'Video Showcase', desc: 'Produced a video highlighting the character’s personality, design details, and overall artistic vision.' }
+      ],
+      tech: ['AI Models', 'Video Production'],
+      gallery: [], behindScenes: []
+    }
   },
   {
-    id: 3, eyebrow: 'Project 04',
-    title: 'CHRONOS',
-    subtitle: 'Interactive Fiction',
-    desc: 'A surreal, philosophical short fiction experience following a teenage protagonist through a slow, existential fall — raw, minimal prose.',
-    tags: ['Fiction', 'Interactive'],
-    color: 0x1c1a1f, accent: 0xb8b2a8,
-    art: 'assets/art/chronos.png'
-  },
-  {
-    id: 4, eyebrow: 'Project 05',
-    title: 'REQUIEM',
-    subtitle: 'Visual Design',
-    desc: 'A dark visual identity exploration — typography, texture, and restraint in service of mood.',
-    tags: ['Design', 'Art Direction'],
-    color: 0x201c1f, accent: 0x8a8f9a,
-    art: 'assets/art/requiem.png'
-  },
-  {
-    id: 5, eyebrow: 'Project 06',
-    title: 'REBIRTH',
-    subtitle: 'Branding',
-    desc: 'The SHDWYI brand identity — monogram, visual language, and cinematic direction across every touchpoint of the channel and portfolio.',
-    tags: ['Identity', 'Visual Direction'],
-    color: 0x1a1620, accent: 0xd8dce6,
-    art: 'assets/art/rebirth.png'
-  },
-  {
-    id: 6, eyebrow: 'Project 07',
+    id: 3, eyebrow: 'Character Concept — SHDWYI',
     title: 'REN ASHVEIL',
-    subtitle: 'Character Design',
+    subtitle: 'Ace of Illusions',
     desc: 'Original character concept — codename MIRAGE. A street magician with a Killua/Gojo-inspired presence: full character bible, ability set, and cinematic mood board.',
     tags: ['Concept Art', 'Storytelling'],
-    color: 0x3a0e1c, accent: 0xff3b5c,
-    art: 'assets/art/ren-ashveil.png'
+    color: 0x1c1a1f, accent: 0xb8b2a8,
+    art: 'assets/art/ren-ashveil.png',
+    page: {
+      eyebrow: 'Character Concept',
+      role: 'Creator & Writer',
+      facts: ['Original Concept', 'Character Bible'],
+      links: { trailer: '', store: '', storeLabel: 'View Project' },
+      quote: 'Every illusion tells a truth someone was too afraid to say out loud.',
+      tech: ['Concept Art', 'Storytelling'],
+      gallery: [], behindScenes: []
+    }
   },
   {
-    id: 7, eyebrow: 'Project 08',
-    title: 'FORGE',
-    subtitle: 'AI Coach',
-    desc: 'A React-based job application assistant — profile storage, tailored cover letters, and a Kanban pipeline tracker for the full job hunt.',
-    tags: ['Fullstack Development', 'AI Integration'],
+    id: 4, eyebrow: 'Digital Art — SHDWYI',
+    title: 'REQUIEM',
+    subtitle: 'Between water and stars',
+    desc: 'A quiet digital art piece — a lone silhouette drifting where deep water meets starlight. (Placeholder — full project details coming soon.)',
+    tags: ['Digital Art'],
+    color: 0x201c1f, accent: 0x8a8f9a,
+    art: 'assets/art/requiem.png',
+    page: {
+      eyebrow: 'Digital Art',
+      role: 'Artist',
+      facts: ['Digital Art'],
+      links: { trailer: '', store: '', storeLabel: 'View Project' },
+      gallery: [], behindScenes: []
+    }
+  },
+  {
+    id: 5, eyebrow: 'Digital Art — SHDWYI',
+    title: 'REBIRTH',
+    subtitle: 'Forged in fire',
+    desc: 'A molten character study — cracked obsidian skin over a living core of flame. (Placeholder — full project details coming soon.)',
+    tags: ['Digital Art', 'Character'],
+    color: 0x1a1620, accent: 0xd8dce6,
+    art: 'assets/art/rebirth.png',
+    page: {
+      eyebrow: 'Digital Art',
+      role: 'Artist',
+      facts: ['Digital Art', 'Character Study'],
+      links: { trailer: '', store: '', storeLabel: 'View Project' },
+      gallery: [], behindScenes: []
+    }
+  },
+  {
+    id: 6, eyebrow: '3D Character — SHXDW',
+    title: 'BLUEEY',
+    subtitle: 'Stylized ZBrush sculpt',
+    desc: 'A stylized 3D elephant crafted in ZBrush, combining appealing shape language, expressive design and a whimsical balloon prop — a clean, optimized, production-ready model suitable for real-time environments.',
+    role: [
+      'Designed and sculpted in ZBrush with a focus on shape language and character appeal',
+      'Expressive features and a dynamic balloon prop to enhance personality, silhouette and visual storytelling',
+      'Balanced artistic quality with technical efficiency'
+    ],
+    meta: { Tools: 'ZBrush', Time: '3 hrs' },
+    tags: ['3D Character', 'ZBrush'],
+    color: 0x3a0e1c, accent: 0xff3b5c,
+    art: 'assets/art/blueey.png',
+    page: {
+      eyebrow: '3D Character',
+      role: '3D Character Artist',
+      facts: ['3 hrs', 'ZBrush', 'Real-time Ready'],
+      links: { trailer: '', store: '', storeLabel: 'View Project' },
+      features: [
+        { title: 'Shape Language', desc: 'Sculpted in ZBrush with a focus on appealing shape language and character appeal.' },
+        { title: 'Expressive Design', desc: 'Expressive features and a whimsical balloon prop enhance personality, silhouette, and visual storytelling.' },
+        { title: 'Optimized Model', desc: 'Balances artistic quality with technical efficiency — clean and production-ready for real-time environments.' }
+      ],
+      tech: ['ZBrush'],
+      gallery: [], behindScenes: []
+    }
+  },
+  {
+    id: 7, eyebrow: 'App — SHXDW',
+    title: 'FORGE AI COACH',
+    subtitle: 'Designed for focus. Powered by AI. Built to help you become your best self.',
+    desc: 'An AI-driven productivity app centered on habit formation and gamified engagement, built in React Native with a scalable architecture. An integrated AI coach delivers personalized guidance, feedback and motivation tied to user activity and progress.',
+    role: [
+      'Dynamic XP progression and responsive notification systems built from scratch',
+      'AI coaching woven directly into the user experience',
+      'Navigation architecture: Today / Workout / Coach / Habits / Profile',
+      'Game-design feedback loops and reward systems — ~30% improvement in friction reduction and feature interaction'
+    ],
+    meta: { Tools: 'React Native, AI integration' },
+    tags: ['App', 'React Native', 'AI'],
     color: 0x241418, accent: 0xe0324a,
-    art: 'assets/art/forge.png'
+    art: 'assets/art/forge.png',
+    page: {
+      eyebrow: 'Featured App',
+      role: 'Fullstack Developer & Designer',
+      facts: ['React Native', 'AI Coaching', 'Mobile'],
+      links: { trailer: '', store: '', storeLabel: 'View Project' },
+      quote: 'Designed for focus. Powered by AI. Built to help you become your best self.',
+      features: [
+        { title: 'XP Progression', desc: 'Dynamic XP progression and responsive notification systems built from scratch.' },
+        { title: 'AI Coaching', desc: 'Personalized guidance, feedback and motivation tied to user activity and progress.' },
+        { title: 'Structured Navigation', desc: 'Today / Workout / Coach / Habits / Profile — an architecture built for daily use.' },
+        { title: 'Gamified Engagement', desc: 'Game-design feedback loops and reward systems — ~30% improvement in friction reduction and feature interaction.' }
+      ],
+      tech: ['React Native', 'AI Integration'],
+      gallery: [], behindScenes: []
+    }
   }
 ];
-
-const ART_VERSION = 3;
-function getArtworkUrls(path){
-  const cleanPath = path.replace(/^\.?\//, '');
-  const urls = [cleanPath, './' + cleanPath];
-  if(location.hostname.endsWith('github.io')){
-    urls.push('/shdw-gallery-portfolio/' + cleanPath);
-  }
-  return [...new Set(urls)].map(url => `${url}?v=${ART_VERSION}`);
-}
 
 // ---------- Core setup ----------
 // touch-first devices (phones/tablets) get the joystick UI and a lighter render load
@@ -926,10 +1210,9 @@ function createPainting(proj){
 
   // Real artwork: if this project names an image, load it and swap it in over
   // the procedural placeholder (which remains the loading/fallback state).
+  const ART_VERSION = 3;
   if(proj.art){
     const img = new Image();
-    const artworkUrls = getArtworkUrls(proj.art);
-    let artworkAttempt = 0;
     img.onload = () => {
       // cover-crop onto a canvas matching the frame opening's aspect (0.639)
       // so any input image fills the frame without stretching
@@ -945,17 +1228,10 @@ function createPainting(proj){
       art.material.emissiveMap = tex;
       art.material.needsUpdate = true;
     };
-    img.onerror = () => {
-      artworkAttempt++;
-      if(artworkAttempt < artworkUrls.length){
-        img.src = artworkUrls[artworkAttempt];
-        return;
-      }
-      console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
-    };
+    img.onerror = () => console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
     // versioned URL so swapping/replacing an image busts the browser cache —
     // bump ART_VERSION whenever a picture in assets/art/ changes
-    img.src = artworkUrls[artworkAttempt];
+    img.src = proj.art + '?v=' + ART_VERSION;
   }
 
   // Apply the shared frame+art transform (position and rotation on every
@@ -1129,6 +1405,8 @@ addEventListener('keydown', e=>{
   if(pageOpen) return; // nav page overlay owns input
   keys[e.key.toLowerCase()] = true;
   if(e.key.toLowerCase()==='e') tryEnterPainting();
+  if(e.key.toLowerCase()==='m') toggleMute();
+  if(e.key.toLowerCase()==='n') nextTrack();
 });
 addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
 
@@ -1305,32 +1583,159 @@ function tryEnterPainting(){
   step();
 }
 
-function openPanel(proj){
-  document.getElementById('p-eyebrow').textContent = proj.eyebrow;
-  document.getElementById('p-title').textContent = proj.title;
-  document.getElementById('p-desc').textContent = proj.desc;
-  const tagsEl = document.getElementById('p-tags');
-  tagsEl.innerHTML = '';
-  proj.tags.forEach(t=>{
-    const s = document.createElement('span'); s.textContent = t; tagsEl.appendChild(s);
-  });
+// ============================================================
+//  PROJECT SHOWCASE PAGE — everything below renders from each
+//  project's `page` object in PROJECTS. Missing fields fall back
+//  to sensible defaults or visible placeholder tiles.
+// ============================================================
+const projectPageEl = document.getElementById('project-page');
 
-  const panel = document.getElementById('panel');
-  panel.classList.add('show');
-  requestAnimationFrame(()=> requestAnimationFrame(()=> panel.classList.add('reveal')));
-  state = 'viewing';
+// Sidebar navigation for the project page — edit labels/targets freely.
+// action 'close' returns to the gallery; 'page' opens a nav overlay page.
+const PP_NAV = [
+  { label:'Home',       action:'close' },
+  { label:'About',      action:'page', target:'about' },
+  { label:'Skills',     action:'page', target:'skills' },
+  { label:'Experience', action:'page', target:'experience' },
+  { label:'Contact',    action:'page', target:'contact' }
+];
+
+function esc(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function ppPh(label){ return `<div class="pp-ph">${esc(label)}</div>`; }
+
+function renderProjectPage(proj){
+  const page = proj.page || {};
+  const hero = page.hero || proj.art;
+  const about = page.about || proj.desc;
+  const gallery = page.gallery || [];
+  const bts = page.behindScenes || [];
+  const features = page.features || [];
+  const tech = page.tech || proj.tags || [];
+  const facts = page.facts || [];
+  const links = page.links || {};
+
+  const thumbs = gallery.length
+    ? gallery.slice(0,6).map((src,i)=>`<img class="pp-thumb${i===0?' on':''}" data-hero="${esc(src)}" src="${esc(src)}" alt="">`).join('')
+    : Array.from({length:4}, ()=> ppPh('media soon')).join('');
+
+  const galleryTiles = gallery.length
+    ? gallery.slice(0,6).map(src=>`<img src="${esc(src)}" alt="">`).join('')
+    : Array.from({length:6}, ()=> ppPh('gallery image coming soon')).join('');
+
+  const btsTiles = bts.length
+    ? bts.slice(0,4).map(src=>`<img src="${esc(src)}" alt="">`).join('')
+    : Array.from({length:4}, ()=> ppPh('coming soon')).join('');
+
+  const featureHtml = features.length
+    ? features.map(f=>`
+        <div class="pp-feature">
+          <div class="pp-fico">${esc(f.icon || '✦')}</div>
+          <div><b>${esc(f.title)}</b><p>${esc(f.desc)}</p></div>
+        </div>`).join('')
+    : `<p class="pp-note">Key features coming soon.</p>`;
+
+  // buttons render disabled until a real URL is set in page.links
+  const trailerBtn = `<a class="pp-btn${links.trailer ? '' : ' disabled'}" href="${esc(links.trailer || '#')}" target="_blank" rel="noopener">${esc(links.trailerLabel || 'Watch Trailer')} ▸</a>`;
+  const storeBtn = `<a class="pp-btn ghost${links.store ? '' : ' disabled'}" href="${esc(links.store || '#')}" target="_blank" rel="noopener">${esc(links.storeLabel || 'View Project')} ↗</a>`;
+
+  projectPageEl.innerHTML = `
+  <div class="pp-layout">
+    <aside class="pp-side">
+      <div>
+        <div class="pp-logo">SHDW<span>YI</span></div>
+        <nav class="pp-nav">
+          ${PP_NAV.map(n=>`<a data-action="${esc(n.action)}" data-target="${esc(n.target||'')}"${n.action==='close'?' class="active"':''}>${esc(n.label)}</a>`).join('')}
+        </nav>
+      </div>
+      <div class="pp-copy">© 2026 SHDWYI<br>All Rights Reserved.</div>
+    </aside>
+    <main class="pp-main">
+      <span class="pp-back" data-action="close">‹ &nbsp;Back to the gallery</span>
+      <div class="pp-header">
+        <div>
+          <div class="pp-eyebrow">${esc(page.eyebrow || 'Featured Project')}</div>
+          <h1 class="pp-title">${esc(proj.title)}</h1>
+          <div class="pp-sub">${esc(proj.subtitle || '')}</div>
+          <p class="pp-desc">${esc(proj.desc)}</p>
+          <div class="pp-facts">${facts.map(f=>`<span>${esc(f)}</span>`).join('')}</div>
+          <div class="pp-actions">${trailerBtn}${storeBtn}</div>
+        </div>
+        <div class="pp-hero">
+          <img class="pp-hero-main" src="${esc(hero)}" alt="${esc(proj.title)}">
+          <div class="pp-thumbs">${thumbs}</div>
+        </div>
+      </div>
+      <div class="pp-sections">
+        <div class="pp-about">
+          <div class="pp-h2">About the Project</div>
+          <p>${esc(about)}</p>
+          ${page.quote ? `<div class="pp-quote">“${esc(page.quote)}”</div>` : ''}
+        </div>
+        <div>
+          <div class="pp-h2">Key Features</div>
+          ${featureHtml}
+        </div>
+        <div>
+          <div class="pp-h2">Gallery</div>
+          <div class="pp-gallery">${galleryTiles}</div>
+          <div class="pp-gbtn"><span class="pp-btn ghost${gallery.length > 6 ? '' : ' disabled'}">⊞ &nbsp;View Full Gallery</span></div>
+        </div>
+      </div>
+      <div class="pp-bottom">
+        <div>
+          <div class="pp-h2">Behind the Scenes</div>
+          <div class="pp-note">A look at development and process</div>
+          <div class="pp-bts">${btsTiles}</div>
+        </div>
+        <div>
+          <div class="pp-h2">My Role</div>
+          <div class="pp-role-line">${esc(page.role || 'Creator')}</div>
+          ${proj.role && proj.role.length ? `<ul class="pp-role-list">${proj.role.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+        </div>
+        <div>
+          <div class="pp-h2">Technologies Used</div>
+          <div class="pp-tech">${tech.map(t=>`<span>${esc(t)}</span>`).join('')}</div>
+        </div>
+      </div>
+    </main>
+  </div>`;
 }
 
-document.getElementById('back-btn').addEventListener('click', ()=>{
-  const panel = document.getElementById('panel');
-  panel.classList.remove('reveal');
+function openPanel(proj){   // entry point from tryEnterPainting — name kept
+  renderProjectPage(proj);
+  projectPageEl.scrollTop = 0;
+  projectPageEl.classList.add('show');
+  requestAnimationFrame(()=> requestAnimationFrame(()=> projectPageEl.classList.add('reveal')));
+  state = 'viewing';
+  fadeMusicTo(musicTarget(), MUSIC.duckTime);   // duck the music under the page
+}
+
+function closeProjectPage(){
+  projectPageEl.classList.remove('reveal');
   setTimeout(()=>{
-    panel.classList.remove('show');
+    projectPageEl.classList.remove('show');
     document.getElementById('fade').classList.remove('on');
     state = 'explore';
-    clock.getDelta();
-  }, 320);
+    fadeMusicTo(musicTarget(), MUSIC.duckTime); // restore full volume
+  }, 300);
+}
+
+// one delegated listener covers back link, sidebar nav and hero thumbnails
+projectPageEl.addEventListener('click', e=>{
+  const thumb = e.target.closest('.pp-thumb');
+  if(thumb){
+    projectPageEl.querySelector('.pp-hero-main').src = thumb.dataset.hero;
+    projectPageEl.querySelectorAll('.pp-thumb').forEach(x=>x.classList.remove('on'));
+    thumb.classList.add('on');
+    return;
+  }
+  const t = e.target.closest('[data-action]');
+  if(!t) return;
+  if(t.dataset.action === 'close') closeProjectPage();
+  else if(t.dataset.action === 'page'){ closeProjectPage(); openPage(t.dataset.target); }
 });
+
+addEventListener('keydown', e=>{ if(e.key === 'Escape' && state === 'viewing') closeProjectPage(); });
 
 // ---------- Mock nav pages (About / Skills / Experience / Contact) ----------
 const PAGES = {
@@ -1459,7 +1864,23 @@ if(IS_TOUCH){
   document.getElementById('prompt').innerHTML = '<span class="key">TAP</span>step into the work';
   document.querySelector('#info-panel .info-text').innerHTML =
     'Move with the stick, drag anywhere to look around, and tap the prompt when it appears.';
+  // no keyboard on touch — give the info panel a next-song button
+  const nextBtn = document.createElement('div');
+  nextBtn.id = 'touch-next';
+  nextBtn.textContent = '♪ Next song';
+  nextBtn.addEventListener('click', ()=> nextTrack());
+  document.getElementById('info-panel').appendChild(nextBtn);
 }
+
+// ---------- Collapsible HUD panels (click the label; choice is remembered) ----------
+document.querySelectorAll('#controls-panel, #info-panel').forEach(p=>{
+  const key = 'shdwyi-collapse-' + p.id;
+  if(localStorage.getItem(key) === '1') p.classList.add('collapsed');
+  p.querySelector('.panel-label').addEventListener('click', ()=>{
+    p.classList.toggle('collapsed');
+    localStorage.setItem(key, p.classList.contains('collapsed') ? '1' : '0');
+  });
+});
 
 // ---------- Resize ----------
 addEventListener('resize', ()=>{
@@ -1492,12 +1913,143 @@ function animate(){
   renderer.render(scene, camera);
 }
 
-// kick off
+// ============================================================
+//  MUSIC — ambient loop with click-to-enter unlock, fade-in,
+//  ducking while a project page is open, and a persistent mute
+//  toggle (M key or the SOUND button). Config below is the only
+//  thing you need to edit; drop a track at MUSIC.url and it works.
+// ============================================================
+const MUSIC = {
+  // Playlist — the FIRST entry always plays on load; N (or track end)
+  // advances through the rest in order, looping around. Edit freely.
+  playlist: [
+    { title: 'Moonlight Sonata — Beethoven',  url: 'assets/audio/moonlight-sonata.mp3' },
+    { title: 'Night Dancer — imase',          url: 'assets/audio/night-dancer.mp3' },
+    { title: 'Interstellar — Hans Zimmer',    url: 'assets/audio/interstellar.mp3' },
+    { title: 'Still With You',                url: 'assets/audio/still-with-you.mp3' }
+  ],
+  volume: 0.3,      // cruising volume, 0–1
+  fadeIn: 2.5,      // seconds, on first entry
+  duckTo: 0.4,      // fraction of volume while a project page is open
+  duckTime: 0.7,    // seconds, for duck/restore fades
+  switchFade: 0.35  // seconds, fade-out when skipping to the next song
+};
+
+const audioListener = new THREE.AudioListener();
+camera.add(audioListener);
+const music = new THREE.Audio(audioListener);
+let musicReady = false, musicStarted = false, switching = false;
+let trackIndex = 0;
+const trackBuffers = {};   // decoded audio cache, per url
+// music always starts fresh on every visit — muting lasts only for the
+// current session, so a refresh brings the music back
+let muted = false;
+
+const muteBtn = document.getElementById('mute-btn');
+function updateMuteBtn(){ if(muteBtn) muteBtn.classList.toggle('muted', muted); }
+updateMuteBtn();
+
+function loadTrack(i, onDone, onErr){
+  const url = MUSIC.playlist[i].url;
+  if(trackBuffers[url]) return onDone(trackBuffers[url]);
+  new THREE.AudioLoader().load(url,
+    buf => { trackBuffers[url] = buf; onDone(buf); },
+    undefined, onErr);
+}
+
+// preload the opening track so it's ready the moment the user clicks in
+loadTrack(0, buffer => {
+  music.setBuffer(buffer);
+  music.setVolume(0);
+  musicReady = true;
+  if(entered) startMusic();   // user already clicked in — start now
+}, () => {
+  console.info('Could not load ' + MUSIC.playlist[0].url + ' — the gallery stays silent.');
+  if(muteBtn) muteBtn.style.display = 'none';
+});
+
+// auto-advance when a track finishes; manual skips are guarded by `switching`
+music.onEnded = function(){
+  THREE.Audio.prototype.onEnded.call(this);
+  if(!switching) nextTrack();
+};
+
+// target volume for the current situation (muted / viewing / exploring)
+function musicTarget(){
+  if(muted) return 0;
+  return MUSIC.volume * (state === 'viewing' ? MUSIC.duckTo : 1);
+}
+function fadeMusicTo(target, secs){
+  if(!musicStarted) return;
+  const g = music.gain.gain, ctx = audioListener.context;
+  g.cancelScheduledValues(ctx.currentTime);
+  g.setValueAtTime(g.value, ctx.currentTime);
+  g.linearRampToValueAtTime(target, ctx.currentTime + secs);
+}
+function startMusic(){
+  if(!musicReady || musicStarted) return;
+  audioListener.context.resume();
+  music.play();
+  musicStarted = true;
+  fadeMusicTo(musicTarget(), MUSIC.fadeIn);
+  showTrackToast();
+}
+function nextTrack(){
+  if(!musicStarted || switching) return;
+  switching = true;
+  trackIndex = (trackIndex + 1) % MUSIC.playlist.length;
+  fadeMusicTo(0, MUSIC.switchFade);
+  setTimeout(()=>{
+    loadTrack(trackIndex, buf => {
+      if(music.isPlaying) music.stop();
+      music.setBuffer(buf);
+      music.setVolume(0);
+      music.play();
+      switching = false;
+      fadeMusicTo(musicTarget(), 0.9);
+      showTrackToast();
+    }, () => {
+      console.info('Could not load ' + MUSIC.playlist[trackIndex].url);
+      switching = false;
+    });
+  }, MUSIC.switchFade * 1000);
+}
+function toggleMute(){
+  muted = !muted;
+  updateMuteBtn();
+  fadeMusicTo(musicTarget(), 0.4);
+}
+if(muteBtn) muteBtn.addEventListener('click', toggleMute);
+
+// transient toast naming the song that just started
+let toastTimer = null;
+function showTrackToast(){
+  const t = document.getElementById('track-toast');
+  if(!t) return;
+  t.textContent = '♪ ' + MUSIC.playlist[trackIndex].title;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 3200);
+}
+
+// ---------- Entry gate (dismisses the loader AND unlocks browser audio) ----------
+let entered = false;
+const loadingEl = document.getElementById('loading');
 setTimeout(()=>{
-  const loading = document.getElementById('loading');
-  loading.style.opacity = 0;
-  setTimeout(()=> loading.style.display='none', 850);
-}, 500);
+  loadingEl.classList.add('ready');
+  loadingEl.innerHTML = '<div><div class="load-title">SHDW<span>YI</span></div><div class="load-sub">welcome to the shadow gallery</div><div class="load-hint">click to enter</div></div>';
+}, 600);
+function enterGallery(){
+  if(entered) return;
+  entered = true;
+  startMusic();
+  loadingEl.style.opacity = 0;
+  setTimeout(()=> loadingEl.style.display = 'none', 850);
+}
+loadingEl.addEventListener('click', enterGallery);
+addEventListener('keydown', function onFirstKey(){ enterGallery(); removeEventListener('keydown', onFirstKey); });
+
+// kick off
 clock.getDelta();
 animate();
 </script>
