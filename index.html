@@ -397,6 +397,16 @@ const PROJECTS = [
   }
 ];
 
+const ART_VERSION = 3;
+function getArtworkUrls(path){
+  const cleanPath = path.replace(/^\.?\//, '');
+  const urls = [cleanPath, './' + cleanPath];
+  if(location.hostname.endsWith('github.io')){
+    urls.push('/shdw-gallery-portfolio/' + cleanPath);
+  }
+  return [...new Set(urls)].map(url => `${url}?v=${ART_VERSION}`);
+}
+
 // ---------- Core setup ----------
 // touch-first devices (phones/tablets) get the joystick UI and a lighter render load
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -916,9 +926,10 @@ function createPainting(proj){
 
   // Real artwork: if this project names an image, load it and swap it in over
   // the procedural placeholder (which remains the loading/fallback state).
-  const ART_VERSION = 2;
   if(proj.art){
     const img = new Image();
+    const artworkUrls = getArtworkUrls(proj.art);
+    let artworkAttempt = 0;
     img.onload = () => {
       // cover-crop onto a canvas matching the frame opening's aspect (0.639)
       // so any input image fills the frame without stretching
@@ -934,10 +945,17 @@ function createPainting(proj){
       art.material.emissiveMap = tex;
       art.material.needsUpdate = true;
     };
-    img.onerror = () => console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
+    img.onerror = () => {
+      artworkAttempt++;
+      if(artworkAttempt < artworkUrls.length){
+        img.src = artworkUrls[artworkAttempt];
+        return;
+      }
+      console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
+    };
     // versioned URL so swapping/replacing an image busts the browser cache —
     // bump ART_VERSION whenever a picture in assets/art/ changes
-    img.src = proj.art + '?v=' + ART_VERSION;
+    img.src = artworkUrls[artworkAttempt];
   }
 
   // Apply the shared frame+art transform (position and rotation on every
