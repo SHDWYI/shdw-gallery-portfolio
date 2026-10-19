@@ -51,6 +51,21 @@
        { type: 'twinkle', areas?, count, flares, minContrast }
    • a bubbles layer: tiny bubbles rising from a point, wobbling, fading to stars
        { type: 'bubbles', x, y, every, rise: [min, max], size: [min, max], life }
+   • a balloon layer: a balloon in the art becomes a separate piece that bobs,
+       now and then inflates, trembles and POPS, then grows back
+       { type: 'balloon', clean: { src, fit }, box, key: { rg }, pivot, every }
+       clean = an AI edit of the art without the balloon (fit like blink's)
+   • a blow layer: new balloons (some heart-shaped) inflate at a point, float
+       up to one side and pop   { type: 'blow', from: [x, y], every, life }
+   • a gaze layer: the eyes' shine (and a hint of the pupils) shifts toward
+       whoever is looking — set painting.gaze = { x, y } in -1..1
+       { type: 'gaze', eyes: [{ x, y, r, socket }], shift, pupilShift }
+   • a blush layer: cheeks blush as painting.proximity (0..1) rises
+       { type: 'blush', spots: [{ x, y, rx, ry }], strength }
+   • a breathe layer (put it last): a soft squash-and-stretch of a region
+       { type: 'breathe', box: [x, y, w, h], pivot: [x, y], amount, period }
+   • flutter layers may carry flap: { every, dur } — then they only move in
+       short bursts (an ear flap) and rest in between
    • a cards layer: playing cards drifting down one by one, tumbling; each flip
        to the face side glitches; they land, lie flat and fade
        { type: 'cards', every: [min, max], fall: [min, max] px/s, size: [min, max],
@@ -67,6 +82,9 @@
        the layers' clock starts when it ends. restartIntro() puts it back to
        the void to play again. With onceKey it plays only once per browser
        session (sessionStorage); without, once per page load.
+       poster: 'art' — the painting lives normally until startIntro() is
+       called (the clip starts and ends on the art; it fades in and out).
+       lazy: true — the clip only downloads after prefetch().
 
    areas: [x, y, w, h] boxes or { poly: [[x, y], ...] }, in still
    pixels; either may carry `feather` (soft-edge px, default 18).
@@ -222,7 +240,7 @@
     precision mediump float;
     uniform sampler2D img, msk;
     uniform vec2 size, origin, anchor;
-    uniform float reach, amp, wl, t, speed;
+    uniform float reach, amp, wl, t, speed, gain;
     varying vec2 uv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float noise(vec2 p){
@@ -237,7 +255,7 @@
       float gust = 0.55 + 0.45 * noise(vec2(t * 0.35, 3.1));
       float bend = sin((d / wl - t * speed) * 6.2832 + noise(p / (wl * 1.6) + t * 0.25) * 2.5);
       float flick = noise(p / (wl * 0.45) - vec2(t * speed * 1.7, t * 0.4)) * 2.0 - 1.0;
-      vec2 off = amp * w * gust * (perp * (0.75 * bend + 0.45 * flick) + dir * 0.2 * flick);
+      vec2 off = amp * gain * w * gust * (perp * (0.75 * bend + 0.45 * flick) + dir * 0.2 * flick);
       vec3 c = texture2D(img, (p - off - origin) / size).rgb;
       float m = texture2D(msk, uv).a;
       gl_FragColor = vec4(c * m, m);
@@ -271,8 +289,10 @@
     gl.uniform2f(u('anchor'), L.anchor[0], L.anchor[1]);
     gl.uniform1f(u('reach'), L.reach || 250); gl.uniform1f(u('amp'), L.amp || 5);
     gl.uniform1f(u('wl'), L.wavelength || 120); gl.uniform1f(u('speed'), L.speed || 0.35);
+    gl.uniform1f(u('gain'), 1);
     gl.viewport(0, 0, b.w, b.h);
-    L.gl = gl; L.glCanvas = c; L.uT = u('t');
+    L.gl = gl; L.glCanvas = c; L.uT = u('t'); L.uGain = u('gain');
+    if (L.flap) L.flapSched = eventTimes(L.flap.every || [5, 9], 61 + L.anchor[0] % 7);
     return true;
   }
 
@@ -383,6 +403,186 @@
     [[G, 1.6], [1.6, G]].forEach(([w, h]) => { const lg = g.createRadialGradient(G / 2, G / 2, 0, G / 2, G / 2, G / 2); lg.addColorStop(0, 'rgba(220,245,255,0.9)'); lg.addColorStop(1, 'rgba(150,200,255,0)'); g.fillStyle = lg; g.fillRect((G - w) / 2, (G - h) / 2, w, h); });
     L.glint = gc;
     L.flareSched = eventTimes(L.flareEvery || [3, 7], 53);
+  }
+
+  // ---- balloons ----
+  const BALLOON_COLORS = {
+    pink: ['#ffc6df', '#f06ba8', '#b52f6c'], blue: ['#d2f6ff', '#5ccdf0', '#2786ad'],
+    heart: ['#ffb8c6', '#ff4d74', '#b0103a'], lilac: ['#ead6ff', '#b58cf2', '#7646b8'], mint: ['#d8fff0', '#62e0b5', '#22936c']
+  };
+  // a glossy party balloon (round or heart), knot at the bottom, string trailing
+  function drawBalloon(ctx, x, y, r, colors, heart, alpha, tilt) {
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.rotate(tilt);
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, r * 1.08); ctx.bezierCurveTo(r * 0.35, r * 1.6, -r * 0.35, r * 2.1, r * 0.1, r * 2.7); ctx.stroke();
+    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.08, 0, 0, r * 1.25);
+    g.addColorStop(0, colors[0]); g.addColorStop(0.45, colors[1]); g.addColorStop(1, colors[2]);
+    ctx.fillStyle = g;
+    if (heart) { ctx.save(); ctx.scale(r * 1.05, r * 1.05); suitPath(ctx, 'h', false); ctx.restore(); ctx.fill(); }   // (path is fixed when traced; fill with the unscaled gradient)
+    else { ctx.beginPath(); ctx.ellipse(0, 0, r * 0.88, r, 0, 0, 6.283); ctx.fill(); }
+    ctx.beginPath(); ctx.moveTo(-r * 0.12, r * 1.08); ctx.lineTo(r * 0.12, r * 1.08); ctx.lineTo(0, r * 0.94); ctx.closePath(); ctx.fill();   // knot
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.ellipse(-r * 0.36, -r * 0.42, r * 0.2, r * 0.12, -0.6, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  // a pop: white starburst lines and shreds of rubber flying out (u: 0..1)
+  function drawPop(ctx, x, y, size, u, color, seed) {
+    const k = 1 - u;
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(255,255,255,${(0.95 * k).toFixed(3)})`; ctx.lineWidth = 2.5 * k + 0.5;
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * 6.283 + seed, r0 = size * (0.35 + 0.9 * u), r1 = size * (0.65 + 1.4 * u);
+      ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0); ctx.lineTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1); ctx.stroke();
+    }
+    ctx.fillStyle = color; ctx.globalAlpha = k;
+    for (let i = 0; i < 11; i++) {
+      const a = i / 11 * 6.283 + hash(seed + i * 3.1), v = size * (0.9 + 1.3 * (hash(seed + i * 7.7) * 0.5 + 0.5));
+      ctx.save(); ctx.translate(x + Math.cos(a) * v * u, y + Math.sin(a) * v * u + 60 * u * u); ctx.rotate(a + u * 7);
+      ctx.fillRect(-size * 0.1, -size * 0.045, size * 0.2, size * 0.09); ctx.restore();
+    }
+    ctx.restore();
+  }
+  // fill unknown pixels smoothly from known ones (pull-push): average down to 1×1,
+  // then back up, each level filling its gaps from the smoother level below.
+  // rgba = image data (rgba bytes), known = 0..1 per pixel; returns rgba-like array.
+  function pullPush(rgba, known, W, H) {
+    const levels = [];
+    let w = W, h = H, c = new Float32Array(W * H * 3), k = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) { const a = known[i]; k[i] = a; c[i * 3] = rgba[i * 4] * a; c[i * 3 + 1] = rgba[i * 4 + 1] * a; c[i * 3 + 2] = rgba[i * 4 + 2] * a; }
+    levels.push({ w, h, c, k });
+    while (w > 1 || h > 1) {
+      const nw = Math.max(1, (w + 1) >> 1), nh = Math.max(1, (h + 1) >> 1), nc = new Float32Array(nw * nh * 3), nk = new Float32Array(nw * nh);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const s = y * w + x, d = (y >> 1) * nw + (x >> 1);
+        nk[d] += k[s]; nc[d * 3] += c[s * 3]; nc[d * 3 + 1] += c[s * 3 + 1]; nc[d * 3 + 2] += c[s * 3 + 2];
+      }
+      for (let i = 0; i < nw * nh; i++) { const f = Math.min(1, nk[i]) / Math.max(1e-6, nk[i]); nk[i] *= f; nc[i * 3] *= f; nc[i * 3 + 1] *= f; nc[i * 3 + 2] *= f; }   // weight caps at 1
+      w = nw; h = nh; c = nc; k = nk; levels.push({ w, h, c, k });
+    }
+    let up = null;
+    for (let li = levels.length - 1; li >= 0; li--) {
+      const L = levels[li], out = new Float32Array(L.w * L.h * 3);
+      for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
+        const i = y * L.w + x, a = Math.min(1, L.k[i]);
+        let ur = 0, ug = 0, ub = 0;
+        if (up) {   // bilinear sample of the coarser level
+          const U = levels[li + 1], fx = Math.min(U.w - 1, Math.max(0, (x - 0.5) / 2)), fy = Math.min(U.h - 1, Math.max(0, (y - 0.5) / 2));
+          const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(U.w - 1, x0 + 1), y1 = Math.min(U.h - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+          for (let j = 0; j < 3; j++) {
+            const v00 = up[(y0 * U.w + x0) * 3 + j], v10 = up[(y0 * U.w + x1) * 3 + j], v01 = up[(y1 * U.w + x0) * 3 + j], v11 = up[(y1 * U.w + x1) * 3 + j];
+            const v = (v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty;
+            if (j === 0) ur = v; else if (j === 1) ug = v; else ub = v;
+          }
+        }
+        const own = a > 0 ? 1 / L.k[i] : 0;
+        out[i * 3] = L.c[i * 3] * own * a + ur * (1 - a);
+        out[i * 3 + 1] = L.c[i * 3 + 1] * own * a + ug * (1 - a);
+        out[i * 3 + 2] = L.c[i * 3 + 2] * own * a + ub * (1 - a);
+      }
+      up = out;
+    }
+    const res = new Float32Array(W * H * 4);
+    for (let i = 0; i < W * H; i++) { res[i * 4] = up[i * 3]; res[i * 4 + 1] = up[i * 3 + 1]; res[i * 4 + 2] = up[i * 3 + 2]; }
+    return res;
+  }
+
+  // the art's own balloon cut out as a sprite, plus a patch of the AI "no balloon"
+  // edit. The balloon is whatever differs between the art and that edit; the patch
+  // is colour-matched to the art around it so no ghost of the balloon shows.
+  function buildBalloon(L, img, W, H, done) {
+    const [bx, by, bw, bh] = L.box, n = bw * bh;
+    L.sched = eventTimes(L.every || [12, 18], 71);
+    const c = new Image(); c.crossOrigin = 'anonymous';
+    c.onload = () => {
+      const a = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); a.drawImage(img, 0, 0);
+      const b = makeCanvas(W, H).getContext('2d', { willReadFrequently: true });
+      b.drawImage(c, L.clean.fit.x, L.clean.fit.y, c.naturalWidth * L.clean.fit.scale, c.naturalHeight * L.clean.fit.scale);
+      const p = a.getImageData(bx, by, bw, bh).data, q = b.getImageData(bx, by, bw, bh).data, m = new Float32Array(n);
+      // 1) the balloon = a big difference between art and edit (finds the shadowed
+      //    neck against his head) OR clearly saturated pink (finds the top, which is
+      //    close in colour to the pink backdrop)
+      const rg = (L.key && L.key.rg) || 80, pinkM = new Float32Array(n);
+      for (let i = 0, k = 0; k < n; k++, i += 4) pinkM[k] = p[i] >= p[i + 2] * 0.92 ? smoothstep(rg - 12, rg + 12, p[i] - p[i + 1]) : 0;
+      // the difference test only counts right next to the pink (the AI also redrew
+      // nearby bits like the hair tuft, which must stay put)
+      const near = makeCanvas(bw, bh), nx = near.getContext('2d', { willReadFrequently: true });
+      const pc = makeCanvas(bw, bh), pcx = pc.getContext('2d'), pid = pcx.createImageData(bw, bh);
+      for (let k = 0; k < n; k++) pid.data[k * 4 + 3] = 255 * pinkM[k];
+      pcx.putImageData(pid, 0, 0);
+      nx.filter = 'blur(12px)'; for (let r = 0; r < 4; r++) nx.drawImage(pc, 0, 0);
+      const nd = nx.getImageData(0, 0, bw, bh).data;
+      for (let i = 0, k = 0; k < n; k++, i += 4) {
+        const dd = Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
+        m[k] = Math.max(smoothstep(L.diff ? L.diff[0] : 45, L.diff ? L.diff[1] : 90, dd) * smoothstep(10, 60, nd[i + 3]), pinkM[k]);
+      }
+      // fill holes: anything not reachable from the box edge through non-balloon is balloon
+      const out = new Uint8Array(n), st = [];
+      for (let x = 0; x < bw; x++) st.push(x, (bh - 1) * bw + x);
+      for (let y = 0; y < bh; y++) st.push(y * bw, y * bw + bw - 1);
+      while (st.length) { const k = st.pop(); if (out[k] || m[k] > 0.5) continue; out[k] = 1; const x = k % bw, y = (k / bw) | 0;
+        if (x > 0) st.push(k - 1); if (x < bw - 1) st.push(k + 1); if (y > 0) st.push(k - bw); if (y < bh - 1) st.push(k + bw); }
+      for (let k = 0; k < n; k++) if (!out[k]) m[k] = 1;
+      const spr = makeCanvas(bw, bh), sx = spr.getContext('2d'), sd = sx.createImageData(bw, bh);
+      for (let i = 0, k = 0; k < n; k++, i += 4) { sd.data[i] = p[i]; sd.data[i + 1] = p[i + 1]; sd.data[i + 2] = p[i + 2]; sd.data[i + 3] = 255 * m[k]; }
+      sx.putImageData(sd, 0, 0);
+      L.sprite = spr;
+      // 2) where to paint the edit: the balloon's shape grown and feathered
+      const grow = makeCanvas(bw, bh), gx = grow.getContext('2d', { willReadFrequently: true });
+      gx.filter = 'blur(11px)'; for (let k = 0; k < 6; k++) gx.drawImage(spr, 0, 0);   // wide enough to take its shadow on his head too
+      const gm = gx.getImageData(0, 0, bw, bh).data;
+      // 3) what's behind the balloon:
+      //    • the pink backdrop: filled in from the real backdrop around it (pull-push:
+      //      shrink the art-with-a-hole level by level, then grow it back underneath),
+      //      so it is the art's own smooth gradient — no seam, no ghost
+      //    • his head (where the balloon's neck sat on it): the AI edit, shifted to
+      //      the art's colour measured on the head just around it
+      const known = new Float32Array(n);
+      for (let i = 0, k = 0; k < n; k++, i += 4) known[k] = gm[i + 3] < 8 && q[i + 2] <= q[i] + 10 ? 1 : 0;   // backdrop clear of the balloon
+      const fill = pullPush(p, known, bw, bh);
+      const off = [0, 0, 0]; let cnt = 0;                               // head colour shift
+      for (let i = 0, k = 0; k < n; k++, i += 4) if (gm[i + 3] > 20 && m[k] < 0.05 && q[i + 2] > q[i] + 20) { off[0] += p[i] - q[i]; off[1] += p[i + 1] - q[i + 1]; off[2] += p[i + 2] - q[i + 2]; cnt++; }
+      if (cnt) off.forEach((v, j) => off[j] = v / cnt);
+      const patch = makeCanvas(bw, bh), px = patch.getContext('2d'), pd = px.createImageData(bw, bh);
+      for (let i = 0; i < pd.data.length; i += 4) {
+        const head = smoothstep(5, 25, q[i + 2] - q[i]);                // the edit shows blue head here
+        for (let j = 0; j < 3; j++) pd.data[i + j] = fill[i + j] * (1 - head) + (q[i + j] + off[j]) * head;
+        pd.data[i + 3] = gm[i + 3];
+      }
+      px.putImageData(pd, 0, 0);
+      L.patch = patch;
+    };
+    c.src = L.clean.src;
+    done(c);
+  }
+  // eye-shine sprites and "shine removed" eye crops for the gaze layer
+  function buildGaze(L, img, W, H) {
+    const s = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); s.drawImage(img, 0, 0);
+    L.eyeParts = L.eyes.map(e => {
+      const R = e.socket || e.r * 1.2, x0 = Math.round(e.x - R), y0 = Math.round(e.y - R), S = Math.round(R * 2);
+      const d = s.getImageData(x0, y0, S, S), p = d.data;
+      const cover = makeCanvas(S, S), shine = makeCanvas(S, S);
+      const cd = cover.getContext('2d').createImageData(S, S), hd = shine.getContext('2d').createImageData(S, S);
+      // shine = anything lighter than the black pupil; erase it (and a 3px margin
+      // around it, where its soft edge is) from the pupil before moving it
+      const K = new Float32Array(S * S);
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4, inPupil = Math.hypot(x0 + x - e.x, y0 + y - e.y) < e.r * 0.86;   // (clear of the pupil's soft rim)
+        K[y * S + x] = inPupil ? smoothstep(10, 45, 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) : 0;
+      }
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4, inPupil = Math.hypot(x0 + x - e.x, y0 + y - e.y) < e.r * 0.95;
+        let kk = 0;
+        if (inPupil) for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+          const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < S && yy < S) kk = Math.max(kk, K[yy * S + xx]);
+        }
+        cd.data[i] = p[i] * (1 - kk) + 6 * kk; cd.data[i + 1] = p[i + 1] * (1 - kk) + 6 * kk; cd.data[i + 2] = p[i + 2] * (1 - kk) + 8 * kk; cd.data[i + 3] = 255;
+        const k = K[y * S + x];
+        hd.data[i] = p[i]; hd.data[i + 1] = p[i + 1]; hd.data[i + 2] = p[i + 2]; hd.data[i + 3] = 255 * k;
+      }
+      cover.getContext('2d').putImageData(cd, 0, 0); shine.getContext('2d').putImageData(hd, 0, 0);
+      return { e, R, x0, y0, cover, shine };
+    });
+    L.g = { x: 0, y: 0 };
   }
 
   // ---- embers: deterministic particles (same time in = same frame out) ----
@@ -528,7 +728,7 @@
   }
 
   // ---- playing cards, drawn once at load (suits as paths: no emoji fonts) ----
-  function suitPath(c, suit) {
+  function suitPath(c, suit, fill = true) {
     c.beginPath();
     if (suit === 'd') { c.moveTo(0, -1); c.lineTo(0.72, 0); c.lineTo(0, 1); c.lineTo(-0.72, 0); c.closePath(); }
     else if (suit === 'h') {
@@ -542,7 +742,7 @@
       [[0, -0.5], [-0.47, 0.08], [0.47, 0.08]].forEach(([x, y]) => { c.moveTo(x + 0.4, y); c.arc(x, y, 0.4, 0, 6.283); });
       c.moveTo(0, -0.1); c.lineTo(0.28, 1); c.lineTo(-0.28, 1); c.closePath();
     }
-    c.fill();
+    if (fill) c.fill();
   }
   const CW = 120, CH = 168;
   function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
@@ -660,8 +860,14 @@
         if (!buildCurrents(L, img, W, H)) L.type = 'none';          // no WebGL: stay still
       } else if (L.type === 'twinkle') {
         buildTwinkle(L, img, W, H);
-      } else if (L.type === 'bubbles') {
+      } else if (L.type === 'bubbles' || L.type === 'blow' || L.type === 'blush') {
         // drawn fresh each frame; nothing to prepare
+      } else if (L.type === 'balloon') {
+        buildBalloon(L, img, W, H, im => this.images.push(im));
+      } else if (L.type === 'gaze') {
+        buildGaze(L, img, W, H);
+      } else if (L.type === 'breathe') {
+        L.temp = makeCanvas(L.box[2], L.box[3]);
       } else if (L.type === 'neon') {
         const k = Object.assign({ minLum: 60, fullLum: 150 }, L.key), b = boundsOf(L.mask, W, H);
         const md = L.mask.getContext('2d').getImageData(0, 0, W, H).data;
@@ -750,14 +956,17 @@
   LivingPainting.prototype.restartIntro = function () {
     const I = this.intro; if (!I) return;
     if (I.v) { I.v.pause(); I.v.removeAttribute('src'); I.v.load(); }
+    const lazy = I.cfg.lazy && !I.fetched;
     const v = I.v = Object.assign(document.createElement('video'),
-      { src: I.cfg.src, muted: true, playsInline: true, preload: 'auto', crossOrigin: 'anonymous' });
+      { src: I.cfg.src, muted: true, playsInline: true, preload: lazy ? 'none' : 'auto', crossOrigin: 'anonymous' });
     I.state = 'waiting'; I.fadeStart = null;
-    this.ctx.globalAlpha = 1; this.ctx.globalCompositeOperation = 'source-over';
-    this.ctx.fillStyle = '#03040c'; this.ctx.fillRect(0, 0, this.W, this.H);
-    this.dirty = true;
+    if (I.cfg.poster !== 'art') {
+      this.ctx.globalAlpha = 1; this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.fillStyle = '#03040c'; this.ctx.fillRect(0, 0, this.W, this.H);
+      this.dirty = true;
+    }
     // until it plays, the painting is the empty void (the video's first frame)
-    v.addEventListener('loadeddata', () => { if (I.v === v && I.state === 'waiting') { this.drawIntroFrame(); this.dirty = true; } }, { once: true });
+    v.addEventListener('loadeddata', () => { if (I.v === v && I.state === 'waiting' && I.cfg.poster !== 'art') { this.drawIntroFrame(); this.dirty = true; } }, { once: true });
     v.addEventListener('ended', () => {
       if (I.v !== v) return;
       I.state = 'done';
@@ -773,9 +982,23 @@
     this.ctx.globalAlpha = 1;
   };
 
+  // start downloading a lazy intro (call when the visitor gets near)
+  LivingPainting.prototype.prefetch = function () {
+    const I = this.intro;
+    if (I && I.v.preload === 'none') { I.fetched = true; I.v.preload = 'auto'; I.v.load(); }
+  };
+  // for poster:'art' intros — play the clip now
+  LivingPainting.prototype.startIntro = function () {
+    const I = this.intro;
+    if (!I || I.state !== 'waiting') return;
+    this.prefetch();
+    I.state = 'playing'; I.v.play().catch(() => {});
+  };
+
   LivingPainting.prototype.play = function () {
     const I = this.intro;
-    if (I && I.state !== 'done') {                          // start (or resume) the intro
+    if (I && (I.state === 'playing' || (I.state === 'waiting' && I.cfg.poster !== 'art'))) {   // start (or resume) the intro
+      this.prefetch();
       I.state = 'playing'; I.v.play().catch(() => {});
       return;
     }
@@ -787,7 +1010,8 @@
     this.videos.forEach(v => v.pause());
   };
   LivingPainting.prototype.ready = function () {
-    if (this.intro && this.intro.state !== 'done' && this.intro.v.readyState < 2) return false;
+    const I = this.intro;
+    if (I && (I.state === 'playing' || (I.state === 'waiting' && I.cfg.poster !== 'art')) && I.v.readyState < 2) return false;
     return this.videos.every(v => v.readyState >= 2) && this.images.every(i => i.complete && i.naturalWidth);
   };
 
@@ -800,9 +1024,14 @@
 
   LivingPainting.prototype.render = function (now) {
     const I = this.intro;
-    if (I && I.state !== 'done') {
+    if (I && I.state !== 'done' && !(I.state === 'waiting' && I.cfg.poster === 'art')) {
       if (I.state === 'waiting') return this.canvas;          // the void, until play()
       const v = I.v, fade = I.cfg.fade || 0.8, left = v.duration - v.currentTime;
+      if (I.cfg.poster === 'art' && v.currentTime < (I.cfg.fadeIn || 0.25)) {   // ease in from the living painting
+        this.renderLayers(now);
+        this.drawIntroFrame(v.currentTime / (I.cfg.fadeIn || 0.25));
+        return this.canvas;
+      }
       if (!(left < fade)) { this.drawIntroFrame(); return this.canvas; }
       // last moments: the living painting comes up underneath and the video fades out
       if (I.fadeStart == null) { I.fadeStart = now; this.startedAt = now; }
@@ -827,6 +1056,11 @@
       if (L.type === 'glow') { this.renderGlow(L, t); continue; }
       if (L.type === 'sway') { this.renderSway(L, t); continue; }
       if (L.type === 'flutter') {
+        if (L.flap) {                                   // bursts only: rest = the untouched still
+          const s = sinceEvent(L.flapSched, t), dur = L.flap.dur || 0.9;
+          if (s >= dur) continue;
+          L.gl.uniform1f(L.uGain, Math.sin(Math.PI * s / dur));
+        }
         L.gl.uniform1f(L.uT, t); L.gl.drawArrays(L.gl.TRIANGLE_STRIP, 0, 4);
         ctx.drawImage(L.glCanvas, L.box.x, L.box.y);
         continue;
@@ -835,6 +1069,11 @@
       if (L.type === 'currents') { this.renderCurrents(L, t); continue; }
       if (L.type === 'twinkle') { this.renderTwinkle(L, t); continue; }
       if (L.type === 'bubbles') { this.renderBubbles(L, t); continue; }
+      if (L.type === 'balloon') { this.renderBalloon(L, t); continue; }
+      if (L.type === 'blow') { this.renderBlow(L, t); continue; }
+      if (L.type === 'gaze') { this.renderGaze(L, t); continue; }
+      if (L.type === 'blush') { this.renderBlush(L, t); continue; }
+      if (L.type === 'breathe') { this.renderBreathe(L, t); continue; }
       if (L.type === 'none') continue;
       if (L.type === 'neon') { this.renderNeon(L, t); continue; }
       if (L.type === 'glitch') { this.renderGlitch(L, t); continue; }
@@ -1018,6 +1257,100 @@
       }
     }
     ctx.globalAlpha = 1;
+  };
+
+  // the head balloon: always bobbing on its base; every so often it inflates,
+  // trembles, POPS, is gone for a beat, then grows back with a springy overshoot
+  LivingPainting.prototype.renderBalloon = function (L, t) {
+    if (!L.patch) return;                                    // clean plate still loading: leave the art as is
+    const ctx = this.ctx, [bx, by, bw, bh] = L.box, [px, py] = L.pivot;
+    const since = sinceEvent(L.sched, t);
+    let s = 1, show = true, pop = -1;
+    const T = { inflate: 1.7, tremble: 0.3, pop: 0.5, gone: 0.9, regrow: 1.3 };
+    const t1 = T.inflate, t2 = t1 + T.tremble, t3 = t2 + T.pop, t4 = t3 + T.gone, t5 = t4 + T.regrow;
+    if (since < t1) { const u = since / t1; s = 1 + 0.42 * u * u * (3 - 2 * u) + 0.03 * Math.sin(since * 18) * u; }
+    else if (since < t2) s = 1.42 + 0.025 * Math.sin(since * 70);
+    else if (since < t4) { show = false; if (since < t3) pop = (since - t2) / T.pop; }
+    else if (since < t5) { const u = (since - t4) / T.regrow; s = 1 - Math.exp(-6 * u) * Math.cos(9 * u); s = Math.max(0.05, s); }
+    // the head without its balloon
+    ctx.drawImage(L.patch, bx, by);
+    if (show) {
+      const sway = 0.06 * Math.sin(t * 1.1) + 0.025 * Math.sin(t * 2.6 + 1);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(sway); ctx.scale(s * (1 - 0.012 * Math.sin(t * 1.9)), s * (1 + 0.015 * Math.sin(t * 1.9)));
+      ctx.drawImage(L.sprite, bx - px, by - py);
+      ctx.restore();
+    }
+    if (pop >= 0) {   // centre of the balloon, scaled up as it was when it burst
+      const cx = px + (bx + bw / 2 - px) * 1.42, cy = py + (by + bh * 0.42 - py) * 1.42;
+      drawPop(ctx, cx, cy, bw * 0.5, pop, '#e8609e', Math.floor(t / L.sched.cycle));
+    }
+  };
+
+  // blowing balloons: one grows at the trunk tip, lets go, drifts up to one side
+  // (clear of his face) and pops near the top; about a third are hearts
+  LivingPainting.prototype.renderBlow = function (L, t) {
+    const ctx = this.ctx, [fx, fy] = L.from, every = L.every || 7, grow = 1.5, fly = L.life || 6;
+    const R = (k, s, lo, hi) => lo + (hi - lo) * (hash(k * 13.1 + s * 4.7) * 0.5 + 0.5);
+    const names = ['pink', 'blue', 'lilac', 'mint'];
+    for (let k = Math.max(0, Math.floor((t - grow - fly - 0.6) / every) - 1); k <= Math.floor(t / every); k++) {
+      const start = k * every + 2 + hash(k * 2.3) * every * 0.3, age = t - start;
+      if (age < 0 || age > grow + fly + 0.6) continue;
+      const heart = hash(k * 9.1) > 0.3 ? false : true, colors = BALLOON_COLORS[heart ? 'heart' : names[Math.floor(R(k, 1, 0, 4)) % 4]];
+      const r = R(k, 2, L.size ? L.size[0] : 40, L.size ? L.size[1] : 56), side = hash(k * 5.3) > 0 ? 1 : -1;
+      if (age < grow) {                                      // being blown up at the trunk
+        const u = age / grow, rr = r * (0.12 + 0.88 * u * u * (3 - 2 * u)) * (1 + 0.04 * Math.sin(age * 20));
+        drawBalloon(ctx, fx, fy + rr * 1.08, rr, colors, heart, 1, Math.PI);   // knot at the trunk, hanging down
+      } else if (age < grow + fly) {                         // floating away
+        // first swing out sideways (clear of his face), then rise
+        const u = (age - grow) / fly, out = smoothstep(0, 0.28, u), rise = smoothstep(0.12, 1, u);
+        const x = fx + side * (R(k, 3, 250, 330) * out + 60 * rise) + 14 * Math.sin(age * 1.4 + k) * out;
+        const y = fy - 30 * out - R(k, 4, 650, 780) * rise;
+        drawBalloon(ctx, x, y, r, colors, heart, 1, 0.12 * Math.sin(age * 1.7 + k) + side * 0.15 * (1 - u));
+      } else {                                               // pop!
+        const x = fx + side * (R(k, 3, 250, 330) + 60), y = fy - 30 - R(k, 4, 650, 780);
+        drawPop(ctx, x, y, r * 1.1, (age - grow - fly) / 0.6, colors[1], k);
+      }
+    }
+  };
+
+  // eyes follow whoever is looking: the pupils drift a touch, the shine more
+  LivingPainting.prototype.renderGaze = function (L, t) {
+    const ctx = this.ctx, target = this.gaze || { x: 0, y: 0 }, g = L.g;
+    g.x += (Math.max(-1, Math.min(1, target.x)) - g.x) * 0.12;   // eased, so it glides
+    g.y += (Math.max(-1, Math.min(1, target.y)) - g.y) * 0.12;
+    const ps = L.pupilShift || 0, hs = L.shift || 8;
+    for (const P of L.eyeParts) {
+      const { e, R, x0, y0 } = P;
+      ctx.save(); ctx.beginPath(); ctx.arc(e.x, e.y, ps ? R - 1 : e.r * 0.97, 0, 6.283); ctx.clip();
+      if (ps) ctx.drawImage(this.img, x0, y0, R * 2, R * 2, x0, y0, R * 2, R * 2);   // (clean socket under a shifted pupil)
+      ctx.drawImage(P.cover, x0 + g.x * ps, y0 + g.y * ps);                          // the pupil without its shine
+      ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.arc(e.x + g.x * ps, e.y + g.y * ps, e.r * 0.95, 0, 6.283); ctx.clip();
+      ctx.drawImage(P.shine, x0 + g.x * hs, y0 + g.y * hs);
+      ctx.restore();
+    }
+  };
+
+  // cheeks: a soft pink glow that rises as you come close
+  LivingPainting.prototype.renderBlush = function (L, t) {
+    const a = (L.strength || 0.45) * Math.max(0, Math.min(1, this.proximity || 0)) * (0.9 + 0.1 * Math.sin(t * 2));
+    if (a < 0.01) return;
+    const ctx = this.ctx;
+    for (const s of L.spots) {
+      ctx.save(); ctx.translate(s.x, s.y); ctx.scale(1, s.ry / s.rx);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, s.rx);
+      g.addColorStop(0, `rgba(255,110,165,${a.toFixed(3)})`); g.addColorStop(1, 'rgba(255,110,165,0)');
+      ctx.fillStyle = g; ctx.fillRect(-s.rx, -s.rx, s.rx * 2, s.rx * 2);
+      ctx.restore();
+    }
+  };
+
+  // breathing: the whole region (already composited) squashes and stretches a hair
+  LivingPainting.prototype.renderBreathe = function (L, t) {
+    const [x, y, w, h] = L.box, [px, py] = L.pivot, k = Math.sin(t * 6.283 / (L.period || 3.2)), a = L.amount || 0.005;
+    const sy = 1 + a * k, sx = 1 + a * 0.45 * k;
+    const tc = L.temp.getContext('2d'); tc.clearRect(0, 0, w, h); tc.drawImage(this.canvas, x, y, w, h, 0, 0, w, h);
+    this.ctx.drawImage(L.temp, px - (px - x) * sx, py - (py - y) * sy, w * sx, h * sy);
   };
 
   // neon: a faint electrical hum, and every few seconds a stutter (off-on-off-dim-on)

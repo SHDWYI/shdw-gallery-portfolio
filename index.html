@@ -629,7 +629,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=8"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=10"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -928,7 +928,7 @@ const PROJECTS = [
     // tail sways. She herself stays still.
     animated: {
       intro: { src: 'assets/projects/requiem/animated/requiem-intro.mp4', fit: { x: 1, y: -100, scale: 0.9205 },
-               fade: 0.3 },   // she glides into the exact pose only in the last ~0.3s
+               fade: 0.3, lazy: true },   // she glides into the exact pose only in the last ~0.3s; downloads only when you get near
       layers: [
         { type: 'currents', amp: 2.2, scale: 240, speed: 0.04,
           keep: { box: [455, 640, 240, 660], maxLum: 50, grow: 5 },
@@ -978,6 +978,31 @@ const PROJECTS = [
     tags: ['3D Character', 'ZBrush'],
     color: 0x3a0e1c, accent: 0xff3b5c,
     art: 'assets/art/blueey.png',
+    // living painting: he blinks, his eyes follow you (or the Blueey guide), his
+    // ears flap now and then, he breathes, his balloon bobs — and every so often
+    // inflates and POPS, then grows back — he blows new balloons (some hearts)
+    // that float up and pop, and he blushes when you come close. The first time
+    // you walk up (each page load, or jumping here from the index) he says hello.
+    animated: {
+      intro: { src: 'assets/projects/blueey/animated/blueey-hello.mp4', fit: { x: 1, y: -99, scale: 0.921 },
+               poster: 'art', lazy: true, fadeIn: 0.25, fade: 0.35 },
+      layers: [
+        { type: 'flutter', anchor: [300, 700], reach: 230, amp: 9, wavelength: 3000, speed: 2.2, flap: { every: [5, 9], dur: 0.8 },
+          areas: [{ poly: [[75,480],[300,520],[330,700],[320,960],[200,975],[75,820]], feather: 14 }] },
+        { type: 'flutter', anchor: [705, 700], reach: 210, amp: 9, wavelength: 3000, speed: 2.2, flap: { every: [5, 9], dur: 0.8 },
+          areas: [{ poly: [[700,520],[860,480],[895,600],[880,860],[800,975],[690,960],[680,700]], feather: 14 }] },
+        { type: 'balloon', box: [425, 215, 285, 455], pivot: [578, 655], every: [12, 18],
+          clean: { src: 'assets/projects/blueey/animated/blueey-no-balloon.jpg', fit: { x: 360, y: 210, scale: 0.459 } } },
+        { type: 'blow', from: [552, 860], every: 7, life: 6 },
+        { type: 'gaze', shift: 10, pupilShift: 0,
+          eyes: [{ x: 419, y: 784, r: 52, socket: 58 }, { x: 660, y: 777, r: 43, socket: 49 }] },
+        { type: 'blink', src: 'assets/projects/blueey/animated/blueey-eyes-closed.jpg', fit: { x: 310, y: 600, scale: 0.4297 },
+          every: [3.5, 7], areas: [[348, 712, 140, 150], [598, 708, 124, 145]].map(b => Object.assign(b, { feather: 6 })),
+          eyes: [{ x: 355, y: 722, w: 125, h: 130 }, { x: 605, y: 718, w: 110, h: 125 }] },
+        { type: 'blush', strength: 0.5, spots: [{ x: 398, y: 886, rx: 46, ry: 24 }, { x: 668, y: 878, rx: 40, ry: 22 }] },
+        { type: 'breathe', box: [60, 190, 880, 1040], pivot: [515, 1195], amount: 0.005, period: 3.2 }
+      ]
+    },
     page: {
       eyebrow: '3D Character',
       role: '3D Character Artist',
@@ -1654,9 +1679,10 @@ const floatAnimation = {
 // a copy once the image and the serif font are ready.
 const NAMEPLATE = {
   src: 'assets/ui/nameplate.png',
-  width: 3.6,                 // world units (the frame is 7.6 wide)
+  width: 1.8,                 // world units (the frame is 7.6 wide)
   centerY: -4.5,              // on the frame's visible bottom border (art ends at -4.17)
   z: 0.095,                   // just in front of the frame face (0.08)
+  textScale: 1,               // title size relative to the largest that fits the plate
   font: '"Cormorant Garamond", Georgia, serif'
 };
 const nameplateReady = Promise.all([
@@ -1685,6 +1711,7 @@ function createNamePlaque(title){
     setFont();
     const spaced = s => s.split('').join(' ');   // a little letter-spacing
     while (c.measureText(spaced(text)).width > maxW && size > 26) { size -= 2; setFont(); }
+    size = Math.round(size * NAMEPLATE.textScale); setFont();
     c.textAlign = 'center'; c.textBaseline = 'middle';
     const x = 512, y = 102;
     // engraved: a light lip below, the dark cut, a soft shadow inside the top edge
@@ -1883,19 +1910,38 @@ function replayIntroFor(group){
   if(p.playing){ p.playing = false; setLiveTexture(p, false); }   // so the next update starts it afresh
 }
 
+// who the painting is looking at, in its own image terms: gaze -1..1 (left/right,
+// up/down as seen in the picture) — the visitor's camera, or the Blueey guide if
+// the guide is closer to the painting — and how close the visitor is (0..1)
+const _gazeTarget = new THREE.Vector3();
+function updateLookers(p, dist){
+  const lp = p.lp;
+  _gazeTarget.copy(camera.position);
+  if(typeof blueey !== 'undefined' && blueey.visible){
+    const gd = Math.hypot(blueey.position.x - p.group.userData.worldPos.x, blueey.position.z - p.group.userData.worldPos.z);
+    if(gd < dist && gd < 14) _gazeTarget.set(blueey.position.x, blueey.position.y + 1.2, blueey.position.z);
+  }
+  p.group.worldToLocal(_gazeTarget);
+  lp.gaze = { x: THREE.MathUtils.clamp(_gazeTarget.x / 9, -1, 1), y: THREE.MathUtils.clamp(-_gazeTarget.y / 9, -1, 1) };
+  lp.proximity = THREE.MathUtils.clamp(1 - (dist - 7) / 9, 0, 1);
+}
+
 function updateAnimatedPaintings(now){
   const active = activeAnimatedPainting();
   animatedPaintings.forEach(p => {
     let want = p === active;
-    const I = p.lp.intro;
-    if(want && I && I.state === 'waiting' && !p.forceIntro &&
-       floorDist(p.group) > INTRO_RANGE) want = false;   // the void waits for you to come close
+    const I = p.lp.intro, dist = floorDist(p.group);
+    if(I && dist < ANIM_RANGE * 1.5) p.lp.prefetch();   // intro clips download only when you're getting near
+    const close = dist <= INTRO_RANGE || p.forceIntro;
+    if(want && I && I.state === 'waiting' && I.cfg.poster !== 'art' && !close) want = false;   // the void waits for you to come close
     if(I && I.state !== 'waiting') p.forceIntro = false;
     if(want !== p.playing){
       p.playing = want;
       if(want) p.lp.play(); else p.lp.pause();
       setLiveTexture(p, want);
     }
+    if(p.playing && I && I.state === 'waiting' && I.cfg.poster === 'art' && close) p.lp.startIntro();   // e.g. Blueey's hello
+    if(p.playing) updateLookers(p, dist);
     if(!p.playing && p.lp.dirty){                       // e.g. an intro's first frame arrived while far away
       p.lp.dirty = false; p.actx.drawImage(p.lp.canvas, ...p.coverRect); p.tex.needsUpdate = true;
     }
