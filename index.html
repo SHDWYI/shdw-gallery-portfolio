@@ -249,12 +249,12 @@
   #project-page{
     --pp-bg:     #0a0a0c;   /* near-black canvas */
     --pp-panel:  #121215;   /* slightly lifted black for tiles */
-    --pp-blush:  #f8dcd0;   /* blush — headings & primary text */
+    --pp-text:   #ffffff;   /* all headings & body text */
     --pp-deep:   #c8102e;   /* deep poppy red — fills, borders */
     --pp-bright: #fb1e44;   /* bright poppy red — accents, hover */
     --pp-olive:  #6a6440;   /* olive — secondary chrome */
-    --pp-dim:    #b3a094;   /* dimmed blush for body text */
-    --pp-faint:  #7d918c;   /* teal-gray for quiet labels */
+    --pp-faint:  rgba(255,255,255,0.55);   /* quiet labels only (nav, notes) */
+    --ink: #ffffff;
     position:fixed; inset:0; z-index:30; display:none; overflow-y:auto;
     background:var(--pp-bg); opacity:0; transition:opacity 0.3s ease;
   }
@@ -268,7 +268,7 @@
   }
   .pp-logo{
     font-family:'Cormorant Garamond',serif; font-size:17px; font-weight:600;
-    letter-spacing:0.32em; color:var(--pp-blush); margin-bottom:44px;
+    letter-spacing:0.32em; color:var(--pp-text); margin-bottom:44px;
   }
   .pp-logo span{ color:var(--pp-bright); }
   .pp-nav a{
@@ -276,9 +276,9 @@
     color:var(--pp-faint); margin-bottom:20px; cursor:pointer; text-decoration:none;
     transition:color 0.2s ease; border-left:2px solid transparent; padding-left:12px;
   }
-  .pp-nav a:hover{ color:var(--pp-blush); }
-  .pp-nav a.active{ color:var(--pp-blush); border-left-color:var(--pp-bright); }
-  .pp-copy{ font-size:10px; color:#54685f; line-height:1.7; }
+  .pp-nav a:hover{ color:var(--pp-text); }
+  .pp-nav a.active{ color:var(--pp-text); border-left-color:var(--pp-bright); }
+  .pp-copy{ font-size:10px; color:var(--pp-faint); line-height:1.7; }
   .pp-main{ flex:1; min-width:0; padding:38px 46px 90px; max-width:1320px; }
   .pp-back{
     display:inline-block; font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
@@ -290,24 +290,24 @@
   .pp-eyebrow{ color:var(--pp-bright); font-size:11px; letter-spacing:0.3em; text-transform:uppercase; margin-bottom:18px; }
   .pp-title{
     font-family:'Cormorant Garamond',serif; font-size:clamp(32px,3.6vw,54px);
-    color:var(--pp-blush); line-height:1.04; font-weight:600; text-transform:uppercase; margin-bottom:12px;
+    color:var(--pp-text); line-height:1.04; font-weight:600; text-transform:uppercase; margin-bottom:12px;
   }
-  .pp-sub{ font-size:15px; color:#e5c8ba; margin-bottom:20px; }
-  .pp-desc{ font-size:13.5px; line-height:1.8; color:var(--pp-dim); margin-bottom:24px; max-width:430px; }
+  .pp-sub{ font-size:15px; color:var(--pp-text); margin-bottom:20px; }
+  .pp-desc{ font-size:13.5px; line-height:1.8; color:var(--pp-text); margin-bottom:24px; max-width:430px; }
   .pp-facts{ display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px; }
-  .pp-facts span{ font-size:12px; color:#d3bfb3; display:flex; align-items:center; gap:8px; }
+  .pp-facts span{ font-size:12px; color:var(--pp-text); display:flex; align-items:center; gap:8px; }
   .pp-facts span::before{ content:''; width:5px; height:5px; background:var(--pp-bright); transform:rotate(45deg); flex:none; }
   .pp-actions{ display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
   /* primary CTA in deep poppy red; the ghost/secondary carries the olive */
   .pp-btn{
-    display:inline-block; border:1px solid var(--pp-deep); color:var(--pp-blush); background:rgba(200,16,46,0.12);
+    display:inline-block; border:1px solid var(--pp-deep); color:var(--pp-text); background:rgba(200,16,46,0.12);
     padding:12px 22px; font-family:'Space Grotesk',sans-serif; font-size:11px;
     letter-spacing:0.18em; text-transform:uppercase; cursor:pointer; text-decoration:none;
     transition:all 0.22s ease;
   }
   .pp-btn:hover{ background:rgba(251,30,68,0.22); border-color:var(--pp-bright); box-shadow:0 0 18px rgba(251,30,68,0.28); }
-  .pp-btn.ghost{ border-color:var(--pp-olive); color:#d9d2ae; background:none; }
-  .pp-btn.ghost:hover{ border-color:var(--pp-bright); color:var(--pp-blush); background:none; box-shadow:none; }
+  .pp-btn.ghost{ border-color:var(--pp-olive); color:var(--pp-text); background:none; }
+  .pp-btn.ghost:hover{ border-color:var(--pp-bright); color:var(--pp-text); background:none; box-shadow:none; }
   .pp-btn.disabled{ opacity:0.4; cursor:default; pointer-events:none; }
 
   .pp-hero-main{
@@ -324,7 +324,7 @@
   .pp-ph{
     display:flex; align-items:center; justify-content:center; text-align:center;
     background:var(--pp-panel); border:1px dashed rgba(248,220,208,0.16); border-radius:4px;
-    color:#5e7770; font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--pp-faint); font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
     padding:6px; cursor:default;
   }
   .pp-thumbs .pp-ph{ aspect-ratio:16/10; }
@@ -333,21 +333,21 @@
     display:grid; grid-template-columns:1fr 1fr 1.25fr; gap:44px;
     border-top:1px solid rgba(248,220,208,0.09); padding-top:38px; margin-bottom:48px;
   }
-  .pp-h2{ font-size:11px; letter-spacing:0.3em; text-transform:uppercase; color:var(--pp-blush); margin-bottom:22px; }
-  .pp-about p{ font-size:13px; line-height:1.85; color:var(--pp-dim); }
+  .pp-h2{ font-size:11px; letter-spacing:0.3em; text-transform:uppercase; color:var(--pp-text); margin-bottom:22px; }
+  .pp-about p{ font-size:13px; line-height:1.85; color:var(--pp-text); }
   .pp-quote{
     border:1px solid rgba(200,16,46,0.45); background:rgba(200,16,46,0.1);
     padding:18px 20px; margin-top:24px;
     font-family:'Cormorant Garamond',serif; font-style:italic;
-    font-size:16.5px; line-height:1.55; color:var(--pp-blush);
+    font-size:16.5px; line-height:1.55; color:var(--pp-text);
   }
   .pp-feature{ display:flex; gap:14px; margin-bottom:22px; }
   .pp-fico{
     width:36px; height:36px; flex:none; border:1px solid rgba(248,220,208,0.18); border-radius:50%;
     display:flex; align-items:center; justify-content:center; color:var(--pp-bright); font-size:13px;
   }
-  .pp-feature b{ display:block; font-size:13px; color:var(--pp-blush); font-weight:500; margin-bottom:4px; }
-  .pp-feature p{ font-size:11.5px; line-height:1.65; color:var(--pp-faint); }
+  .pp-feature b{ display:block; font-size:13px; color:var(--pp-text); font-weight:500; margin-bottom:4px; }
+  .pp-feature p{ font-size:11.5px; line-height:1.65; color:var(--pp-text); }
   .pp-gallery{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
   .pp-gallery img, .pp-gallery .pp-ph{ aspect-ratio:16/10; width:100%; object-fit:cover; border-radius:4px; border:1px solid rgba(248,220,208,0.1); }
   .pp-gbtn{ margin-top:14px; text-align:center; }
@@ -356,7 +356,7 @@
   .pp-tile:hover img{ filter:brightness(1.15); }
   .pp-more{
     position:absolute; inset:0; border-radius:4px; display:flex; align-items:center; justify-content:center;
-    background:rgba(10,10,12,0.62); color:var(--pp-blush); font-size:18px; letter-spacing:0.08em;
+    background:rgba(10,10,12,0.62); color:var(--pp-text); font-size:18px; letter-spacing:0.08em;
   }
   .pp-hero-main.zoomable{ cursor:zoom-in; }
   /* portrait images (phone screenshots, character posters) show whole, letterboxed */
@@ -376,7 +376,7 @@
   }
   #lightbox button{
     position:absolute; background:none; border:none; cursor:pointer;
-    color:#f8dcd0; font-family:'Space Grotesk',sans-serif; transition:color 0.2s ease;
+    color:#ffffff; font-family:'Space Grotesk',sans-serif; transition:color 0.2s ease;
   }
   #lightbox button:hover{ color:#fb1e44; }
   .lb-close{ top:20px; right:26px; font-size:22px; padding:8px; }
@@ -385,7 +385,7 @@
   .lb-next{ right:8px; }
   .lb-count{
     position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
-    font-size:11px; letter-spacing:0.24em; color:#b3a094;
+    font-size:11px; letter-spacing:0.24em; color:#ffffff;
   }
 
   .pp-bottom{
@@ -395,16 +395,16 @@
   .pp-bts{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
   .pp-bts img, .pp-bts .pp-ph{ aspect-ratio:4/3; width:100%; object-fit:cover; border-radius:4px; border:1px solid rgba(248,220,208,0.1); }
   .pp-note{ font-size:11px; color:var(--pp-faint); margin-bottom:16px; letter-spacing:0.04em; }
-  .pp-role-line{ font-size:14px; color:#e5c8ba; line-height:1.7; margin-bottom:18px; }
+  .pp-role-line{ font-size:14px; color:var(--pp-text); line-height:1.7; margin-bottom:18px; }
   .pp-role-list{ list-style:none; }
   .pp-role-list li{
     position:relative; padding-left:16px; margin-bottom:8px;
-    font-size:11.5px; line-height:1.6; color:var(--pp-dim);
+    font-size:11.5px; line-height:1.6; color:var(--pp-text);
   }
   .pp-role-list li::before{ content:''; position:absolute; left:0; top:8px; width:7px; height:1px; background:var(--pp-bright); }
   .pp-tech{ display:flex; flex-wrap:wrap; gap:10px; }
   .pp-tech span{
-    font-size:11px; letter-spacing:0.06em; color:#d9d2ae;
+    font-size:11px; letter-spacing:0.06em; color:var(--pp-text);
     border:1px solid rgba(106,100,64,0.75); border-radius:4px;
     background:rgba(106,100,64,0.16); padding:8px 14px;
   }
@@ -418,6 +418,7 @@
 
   /* --- Mock nav pages (About / Skills / Experience / Contact) --- */
   #page{
+    --ink:#ffffff; --ink-dim:rgba(255,255,255,0.55);   /* white text on the nav pages */
     position:fixed; inset:0; z-index:40; display:none; overflow-y:auto;
     background:radial-gradient(circle at 50% 30%, #14111a 0%, #08080b 70%);
   }
@@ -440,13 +441,13 @@
     font-family:'Cormorant Garamond',serif; font-size:52px; font-weight:600;
     color:var(--ink); line-height:1.05; margin-bottom:22px;
   }
-  .page-lede{ font-size:15px; line-height:1.8; color:#c9c3bc; margin-bottom:44px; max-width:580px; }
+  .page-lede{ font-size:15px; line-height:1.8; color:var(--ink); margin-bottom:44px; max-width:580px; }
   .page-section{ margin-bottom:48px; }
   .page-h2{
     font-size:11px; letter-spacing:0.3em; text-transform:uppercase;
     color:var(--crimson-glow); margin-bottom:18px;
   }
-  .page-body{ font-size:13.5px; line-height:1.75; color:#c9c3bc; max-width:560px; }
+  .page-body{ font-size:13.5px; line-height:1.75; color:var(--ink); max-width:560px; }
 
   .stat-row{ display:flex; gap:44px; flex-wrap:wrap; margin-bottom:48px; }
   .stat b{ display:block; font-family:'Cormorant Garamond',serif; font-size:38px; color:var(--ink); font-weight:600; }
@@ -462,7 +463,7 @@
   .chips{ display:flex; flex-wrap:wrap; gap:8px; }
   .chips span{
     font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
-    border:1px solid #3a3540; color:#b9b3ac; padding:5px 11px; border-radius:2px;
+    border:1px solid #3a3540; color:var(--ink); padding:5px 11px; border-radius:2px;
   }
 
   .timeline{ border-left:1px solid rgba(255,255,255,0.12); padding-left:28px; }
@@ -474,7 +475,7 @@
   }
   .t-date{ font-size:11px; letter-spacing:0.2em; text-transform:uppercase; color:var(--crimson-glow); margin-bottom:6px; }
   .t-role{ font-family:'Cormorant Garamond',serif; font-size:25px; color:var(--ink); font-weight:600; margin-bottom:6px; }
-  .t-desc{ font-size:13.5px; line-height:1.7; color:#c9c3bc; max-width:540px; }
+  .t-desc{ font-size:13.5px; line-height:1.7; color:var(--ink); max-width:540px; }
 
   .contact-line{ display:flex; align-items:baseline; gap:16px; margin-bottom:13px; font-size:14px; }
   .contact-line b{ min-width:96px; font-size:11px; letter-spacing:0.2em; text-transform:uppercase; color:var(--ink-dim); font-weight:500; }
@@ -531,6 +532,20 @@
     transform:translateX(-50%) rotate(45deg); width:10px; height:10px;
     background:rgba(14,20,28,0.85);
     border-right:1px solid rgba(94,203,233,0.55); border-bottom:1px solid rgba(94,203,233,0.55);
+  }
+
+  /* glitch-decode hover — colour-split flicker while the letters scramble
+     (text-shadow only, so it never disturbs an element's own transform) */
+  .glitching{ animation:glitch-split var(--glitch-ms, 900ms) linear 1; }
+  @keyframes glitch-split{
+    0%   { text-shadow: 3px 0 rgba(230,15,40,0.9), -3px 0 rgba(0,220,255,0.6); }
+    12%  { text-shadow:-3px 0 rgba(230,15,40,0.9),  3px 0 rgba(0,220,255,0.6); }
+    24%  { text-shadow: 2px 0 rgba(230,15,40,0.9), -2px 0 rgba(0,220,255,0.6); }
+    40%  { text-shadow:-2px 0 rgba(230,15,40,0.85), 2px 0 rgba(0,220,255,0.55); }
+    58%  { text-shadow: 1px 0 rgba(230,15,40,0.8), -1px 0 rgba(0,220,255,0.5); }
+    76%  { text-shadow:-1px 0 rgba(230,15,40,0.7),  1px 0 rgba(0,220,255,0.4); }
+    90%  { text-shadow: 0 0 10px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,1); }  /* the pop as the word lands */
+    100% { text-shadow:none; }
   }
 
   /* now-playing toast */
@@ -627,9 +642,10 @@
 // "not set yet" placeholder; false hides the button (project has none).
 // page.behindScenes: same idea — [] shows "coming soon" tiles, false hides it.
 
-// Images hosted on the Framer site's CDN — FRAMER_IMG('id.png') gives the
-// original; galleries request a lighter size for thumbnails automatically.
-const FRAMER_IMG = file => 'https://framerusercontent.com/images/' + file;
+// Project images live in assets/projects/<project>/<gallery|behind-the-scenes>/,
+// numbered in display order, each with a small JPG copy in thumbs/ that the
+// page tiles use. To add or reorder images, edit the file lists below.
+const projectImgs = (folder, files) => files.map(f => 'assets/projects/' + folder + '/' + f);
 
 const PROJECTS = [
   {
@@ -668,31 +684,18 @@ const PROJECTS = [
         { icon: '♫', title: 'Sound & Immersion', desc: 'Contributions to sound design and audio integration to deepen the underwater dread.' }
       ],
       tech: ['Unreal Engine', 'Blueprints', 'C++'],
-      hero: FRAMER_IMG('wgBAhDFiXgdCNC1zD4uKieXX9vo.jpg'),
-      // key art, title screen, environments, then the in-game UI
-      gallery: [
-        'wgBAhDFiXgdCNC1zD4uKieXX9vo.jpg', 'TdpdDbhHtcgr9vMM6eaCtW9Laoo.png', 'iReN5E2Rrf4olC8I4PBj2vsfI.png',
-        'cPi0Wi9lEowfhGGTqfdHVZ91I.png',   'zKrBS8KkBe17yrgxwbaq0G5Y0.png',   'XXAvFKZr1FscAkKx7DHCPYsLg.png',
-        'uuoFmxNN2UO8x6Kc61YGL6p7gyw.png', 'WlCvDWbKJeeFVV4ec1EmF1JfbzQ.png', 'xg8nsSTvjegOyp9qg8h697xE3Yo.png',
-        '5PfODw1OLhGzQtXhJKw0OWBH8FI.png', 'j02yeZF1dieb1avzS8HeidVVv3I.png', 'uX2BLRSLwMjwD9g8NYsLHaFwJQ.png',
-        'uKMPOq2wPLt6s5RcGdGGRUGkG4.png',  'E1uQ7BiQ9DnjOqCs2ur18O0hdOE.png', 'kRg3im8j4ntJ7KgEU6lsq3riUM.png',
-        'uYlM9mXRtI0wfcm1zpS9PLY80h8.png', 'AlZaOlPDOjoXWRdcTj8vYIlKoc.png', 'uXsMIFGb58YdZQWaNvSEQB9noGM.png',
-        'O5PduZS3TMwgGs6pdkQk4hvGsY.png',  '7JkekfWdXzOXZBU1AQq8OzuEds.png',  'GwzGZm86ci3bMNJij8rpilhUPmE.png',
-        'UOKHD8S5dXHj9WTlpntq5x7Ao.png',   'cRuidZAiWUuRHG4HsOPhsxCMS4.png',  '476hi3iXbVvtdQWftsqw60JNgY8.png',
-        'NWhFKMzw3nDhAF5YVrQHFNk.png',     '0lKHHMX9pSpQU0yVQHIpuipNOw.png',  'vLwqeSd3axN7r0IoXJ4bOiWX8.png',
-        'tcv8pbcEM0DaFdu0vf347nKsAs.png',  'b0QwtzlsrgDvm7TlajKV32GBCA.png',  '7lhLawZcpB3jnlTlDtTz3iRB7lw.png',
-        '5J5pxeNC0BHgKdEQ53w5VmQZjhk.png', 'lqWHUbbffMqVOyumozrdK2pgOPo.png', 'F9W1ba8OOoKRB7aq468SeBsupOI.png',
-        'iTqNcAf4tUEZ03Fsv4TgfuO9ro.png',  '546i5yGSrHVFxAVqi2DIL5OKyag.png', 'EvBbvvL0i9yjHWg0xBXfvldWJ5I.png',
-        'IFTSAl8u7EZ1hOCBNhklSTWKtDA.png', 'U899Ua9l8u6i8MP3gyBRV4Yy880.png', 'bele7uzxADipWn8JhNbwnVn0rY.png',
-        'a4sMdENmzlIzLEEXjKnvs2OGZM.png'
-      ].map(FRAMER_IMG),
+      hero: 'assets/projects/abyss/gallery/01.jpg',
+      // 01 key art, 02 title screen, 03–19 environments, 20–40 in-game UI
+      gallery: projectImgs('abyss/gallery', [
+        '01.jpg', '02.png', '03.png', '04.png', '05.png', '06.png', '07.png', '08.png', '09.png', '10.png',
+        '11.png', '12.png', '13.png', '14.png', '15.png', '16.png', '17.png', '18.png', '19.png', '20.png',
+        '21.png', '22.png', '23.png', '24.png', '25.png', '26.png', '27.png', '28.png', '29.png', '30.png',
+        '31.png', '32.png', '33.png', '34.png', '35.png', '36.png', '37.png', '38.png', '39.png', '40.png'
+      ]),
       // process work: concept sketch, level layout, sculpts, the porthole from gray to textured
-      behindScenes: [
-        '4h7RMWkOAK4StQ3ztAt585uEJc.jpg', 'wnKr2JsROcS0smmu0UbHxYyV8Uo.png', '1vEyjZqHSIqdA3Rp49DbudpccQ.png',
-        'ZJ3GkV6KKhElPv0WJkpl52qpto.jpg', 'oFXAVgPzVmkEdmqNn4cIPHL7coA.jpg', 'DWNVvBqbpenJbA9zpLcsfnAKLDc.png',
-        'pdcMPHQ8KOuhtbHyzYoOTKPmjU.png', 'z8bqBLSrTC3mBQxOPcfpbS1U.png',    'aucmYJ7S2lfvQ5pqLHC83Bz76Q.png',
-        'r1SXxCsSY1ne9yyKIWVGFeYdXtQ.jpg'
-      ].map(FRAMER_IMG)
+      behindScenes: projectImgs('abyss/behind-the-scenes', [
+        '01.jpg', '02.png', '03.png', '04.jpg', '05.jpg', '06.png', '07.png', '08.png', '09.png', '10.jpg'
+      ])
     }
   },
   {
@@ -731,12 +734,10 @@ const PROJECTS = [
         { icon: '▣', title: 'Gameplay & UI', desc: 'Player control systems, smooth real-time transitions, and UI interaction flows.' }
       ],
       tech: ['Unity', 'Animator Controller', 'IK Rigging', 'Root Motion', 'Keyframe Animation'],
-      hero: FRAMER_IMG('Gtb1wZRGdWtbo3ybgkFqc2PZ90.png'),
-      gallery: [
-        'Gtb1wZRGdWtbo3ybgkFqc2PZ90.png', 'tBvLwGcXjC1wNhbesfsFDWo5twc.png', 'zSpMnoQjJlBeegj9gxD6r6118x8.png',
-        'EReOG1wi2aqXjpKjM1MAcJNhUA.png',  'R6iPQvpVQ2mfpl3idInvf7VqlM.png',  'Mk1O7M3tKhHbeCQGW5eKzSxA9s.png',
-        'uVp9pWSeYK5gxEVViCOlEcRQ7rE.png', 'vCi1dpPH6c2JXjrD0gEVWym1pzM.png', 'UZwF7Darc8TiRIdREwyWU93arI.png'
-      ].map(FRAMER_IMG),
+      hero: 'assets/projects/echoes/gallery/01.png',
+      gallery: projectImgs('echoes/gallery', [
+        '01.png', '02.png', '03.png', '04.png', '05.png', '06.png', '07.png', '08.png', '09.png'
+      ]),
       behindScenes: false   // none published — section hidden
     }
   },
@@ -768,12 +769,11 @@ const PROJECTS = [
         { icon: '▶', title: 'Video Showcase', desc: 'A video presenting the character’s personality, design details, and overall artistic vision.' }
       ],
       tech: ['AI Models', 'Art Direction', 'Video Production'],
-      hero: FRAMER_IMG('3QjZhR5dRUy4KDi62FYz3eW5o.png'),
-      gallery: [
-        '3QjZhR5dRUy4KDi62FYz3eW5o.png', 'H6FnalpRVuqcKfxWlK67i9Oai0w.png', 'M1oCFod426HXVDfHZt1WoebHLk.png',
-        'rVuwcAeJyaQ5UiXRws8aznIH5gk.png', 'G93B9G4kF1VTAyA0edx5drWIp0.png', 'PHFxF30zQxz0G5XnppTzgNu7Ss.png',
-        'LFVoVS3xWmCB904ae2tGN0x8hA.png',  'NFIwQJ82NArdI1MdC778z1FdI.png'
-      ].map(FRAMER_IMG),
+      hero: 'assets/projects/red-shadow/gallery/01.png',
+      // 01–05 landscape shots, 06–08 portraits
+      gallery: projectImgs('red-shadow/gallery', [
+        '01.png', '02.png', '03.png', '04.png', '05.png', '06.png', '07.png', '08.png'
+      ]),
       behindScenes: false   // none published — section hidden
     }
   },
@@ -857,10 +857,10 @@ const PROJECTS = [
         { icon: '⚙', title: 'Optimized Model', desc: 'Artistic quality balanced with technical efficiency — clean and ready for real-time use.' }
       ],
       tech: ['ZBrush'],
-      hero: FRAMER_IMG('pEt9yLl6vgjSMHGB3neW5U.png'),
-      gallery: [
-        'pEt9yLl6vgjSMHGB3neW5U.png', 'mjQ2F3hs3Wz9UOOLafROKmqaA.png', 'F5ayswGN99NgsBLD9j35nYSOnfA.png'
-      ].map(FRAMER_IMG),
+      hero: 'assets/projects/blueey/gallery/01.png',
+      gallery: projectImgs('blueey/gallery', [
+        '01.png', '02.png', '03.png'
+      ]),
       behindScenes: false   // none published — section hidden
     }
   },
@@ -899,12 +899,11 @@ const PROJECTS = [
         { icon: '⚙', title: 'Gamified Engagement', desc: 'Feedback loops and reward systems that lifted feature interaction by ~30%.' }
       ],
       tech: ['React Native', 'AI Integration', 'Gamification', 'UX Design'],
-      hero: FRAMER_IMG('OhEgbRt6wRCUoMHTEGyKocCm8M.png'),
-      gallery: [
-        'OhEgbRt6wRCUoMHTEGyKocCm8M.png', 'Ry0JRHo5IHEseCEuHOUYjwMyE.png',  'HVaPOcp7V34A6Suynf8zvSZ2FY.png',
-        'jYDLkNFMc4CXxxmgJnSl1jEjAFQ.png', 'URE9qOuji7FBucc6aGuub5D7UE.png', 'zQBO6VMcqDLaeIJb00PCEv7LGM.png',
-        'Vflv0eXbv0shGmaaDNSSFzZ0.png',    'oLo6q98hHV2BHC63NtZOkYB848.png', 'PTWo37hbRz6tHfNwKrImuhZjQ.png'
-      ].map(FRAMER_IMG),
+      hero: 'assets/projects/forge/gallery/01.png',
+      // 01 promo poster, 02–09 app screenshots
+      gallery: projectImgs('forge/gallery', [
+        '01.png', '02.png', '03.png', '04.png', '05.png', '06.png', '07.png', '08.png', '09.png'
+      ]),
       behindScenes: false   // none published — section hidden
     }
   }
@@ -2073,10 +2072,13 @@ const PP_NAV = [
 function esc(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 function ppPh(label){ return `<div class="pp-ph">${esc(label)}</div>`; }
 
-// Framer's CDN resizes on request, so small tiles fetch a light copy while the
-// hero and lightbox get the original. Local asset paths pass through untouched.
+// Small tiles fetch a light copy while the hero and lightbox get the original:
+// local project images have a pre-made JPG in thumbs/, and Framer's CDN (if a
+// remote image is ever used again) resizes on request.
 function imgSize(src, px){
-  return /framerusercontent\.com/.test(src) ? src.split('?')[0] + '?scale-down-to=' + px : src;
+  if(/framerusercontent\.com/.test(src)) return src.split('?')[0] + '?scale-down-to=' + px;
+  const m = src.match(/^(assets\/projects\/.+\/)([^/]+)\.\w+$/);
+  return m ? m[1] + 'thumbs/' + m[2] + '.jpg' : src;
 }
 
 // image lists of the project currently on screen, for the lightbox
@@ -2475,6 +2477,74 @@ function teleportToPainting(i){
   }, 180);
 }
 let povHintShown = false;
+
+// ---------- Glitch-decode hover on interactive text ----------
+// Hovering any of these scrambles its letters into random glyphs, then locks
+// the real word back in left-to-right. Only text nodes change, so nested markup
+// (arrows, numbered index badges, key caps) survives untouched.
+const GLITCH_SELECTOR = [
+  '#nav span', '.toc-item', '#prompt', '.panel-label', '#touch-next',
+  '#page-close', '.contact-line a', '.c-form button',
+  '.pp-back', '.pp-btn', '.pp-nav a'
+].join(', ');
+const GLITCH_UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&$*+=<>/';
+const GLITCH_LOWER = 'abcdefghijklmnopqrstuvwxyz0123456789#%&$*+=<>/';
+const GLITCH_MS = 900;      // whole effect, scramble → settled word
+const GLITCH_HOLD = 0.22;   // fraction spent fully scrambled before letters lock in
+const GLITCH_TICK = 55;     // ms between glyph swaps — slow enough to read each one
+const glitchOriginal = new WeakMap();   // text node -> its real text
+const glitchRunning = new WeakSet();
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function randomGlyph(ch){
+  const pool = ch === ch.toLowerCase() && ch !== ch.toUpperCase() ? GLITCH_LOWER : GLITCH_UPPER;
+  return pool[Math.random() * pool.length | 0];
+}
+
+function glitchText(el){
+  if(reduceMotion || glitchRunning.has(el)) return;
+  const nodes = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while(walker.nextNode()) if(walker.currentNode.nodeValue.trim()) nodes.push(walker.currentNode);
+  if(!nodes.length) return;
+  nodes.forEach(n => { if(!glitchOriginal.has(n)) glitchOriginal.set(n, n.nodeValue); });
+  glitchRunning.add(el);
+  el.style.setProperty('--glitch-ms', GLITCH_MS + 'ms');
+  el.classList.add('glitching');
+  const start = performance.now();
+  let lastTick = -1;
+  (function frame(now){
+    const t = Math.min(1, (now - start) / GLITCH_MS);
+    const tick = Math.floor((now - start) / GLITCH_TICK);
+    if(tick !== lastTick || t >= 1){
+      lastTick = tick;
+      // hold fully scrambled, then lock letters in left-to-right with an ease-out
+      const r = Math.max(0, (t - GLITCH_HOLD) / (1 - GLITCH_HOLD));
+      const eased = 1 - Math.pow(1 - r, 3);
+      nodes.forEach(n => {
+        const real = glitchOriginal.get(n);
+        const settled = Math.floor(real.length * eased);
+        let s = '';
+        for(let i = 0; i < real.length; i++){
+          const ch = real[i];
+          s += (i < settled || !/[A-Za-z0-9]/.test(ch)) ? ch : randomGlyph(ch);
+        }
+        n.nodeValue = s;
+      });
+    }
+    if(t < 1) requestAnimationFrame(frame);
+    else {
+      nodes.forEach(n => { n.nodeValue = glitchOriginal.get(n); });
+      el.classList.remove('glitching');
+      glitchRunning.delete(el);
+    }
+  })(start);
+}
+// one listener for the whole document — covers elements rendered later too
+document.addEventListener('pointerover', e=>{
+  const el = e.target.closest && e.target.closest(GLITCH_SELECTOR);
+  if(el && !el.contains(e.relatedTarget)) glitchText(el);
+});
 
 // ---------- Collapsible HUD panels (click the label; choice is remembered) ----------
 document.querySelectorAll('#controls-panel, #info-panel').forEach(p=>{
