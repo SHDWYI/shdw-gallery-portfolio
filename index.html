@@ -101,13 +101,14 @@
   .collapsed .panel-label::after{ content:'+'; }
 
   /* touch-only next-song button inside the info panel */
-  #touch-next{
+  #touch-next, #touch-sky{
     margin-top:14px; padding:10px 0; text-align:center;
     border:1px solid rgba(255,255,255,0.18); border-radius:6px;
     font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:var(--ink);
     cursor:pointer; pointer-events:auto;
   }
-  #touch-next:active{ border-color:var(--crimson-glow); color:var(--crimson-glow); }
+  #touch-next:active, #touch-sky:active{ border-color:var(--crimson-glow); color:var(--crimson-glow); }
+  #touch-sky{ margin-top:8px; }
   .ctl-row{ display:flex; align-items:center; gap:7px; margin-bottom:11px; }
   .ctl-row:last-child{ margin-bottom:0; }
   .ctl-txt{ font-size:12px; letter-spacing:0.06em; color:#c4beb7; margin-left:6px; text-transform:uppercase; }
@@ -589,6 +590,7 @@
     <div class="ctl-row"><span class="key">E</span><span class="ctl-txt">Interact</span></div>
     <div class="ctl-row"><span class="key">N</span><span class="ctl-txt">Next song</span></div>
     <div class="ctl-row"><span class="key">M</span><span class="ctl-txt">Sound on/off</span></div>
+    <div class="ctl-row"><span class="key">K</span><span class="ctl-txt">Change sky</span></div>
     <div class="ctl-row" id="sens-row"><span class="ctl-txt">Sensitivity</span><input type="range" id="sens" min="0.3" max="2" step="0.1" value="1"></div>
   </div>
 
@@ -967,6 +969,22 @@ floor.position.z = -25;          // extend back to cover the receding frames
 floor.receiveShadow = true;
 scene.add(floor);
 
+// The marble dissolves softly toward its edges, so against the space sky the
+// gallery reads as a floating island instead of a slab with a hard cut-off.
+// Elliptical fade (x radius 50, z radius 80) centred on the middle of the aisle.
+floorMat.transparent = true;
+floorMat.onBeforeCompile = shader => {
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vFloorWorld;')
+    .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvFloorWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vFloorWorld;')
+    .replace('#include <dithering_fragment>',
+      '#include <dithering_fragment>\n' +
+      'float floorEdge = length(vec2(vFloorWorld.x / 50.0, (vFloorWorld.z + 15.0) / 80.0));\n' +
+      'gl_FragColor.a *= 1.0 - smoothstep(0.7, 1.0, floorEdge);');
+};
+
 const HALL_H = 48;
 
 // (God-ray removed — atmosphere now carried by broad lighting + smoke)
@@ -1082,6 +1100,153 @@ scene.add(moon);
   f.position.set(x,y,z);
   scene.add(f);
 });
+
+// ============================================================
+//  SPACE SKY — a 360° equirectangular panorama on an inside-out
+//  sphere that rides along with the camera (so it reads as
+//  infinitely far away) and drifts slowly, plus a twinkling star
+//  layer in front of it for depth. Once the image loads, the fog
+//  takes on the colour of the sky's horizon so the marble floor
+//  fades into the nebula instead of a black band, and the gold
+//  frames pick up faint nebula reflections. All knobs live in SKY.
+// ============================================================
+const SKY = {
+  enabled: true,
+  // Skies the switcher cycles through (K key, or the Sky button on touch). Brightness
+  // is per sky because each image is exposed differently; < 1 dims it toward night.
+  skies: [
+    { name: 'Starry Night',   url: 'assets/sky/starry-night.jpg',  brightness: 0.28 },
+    { name: 'Crimson Nebula', url: 'assets/sky/space.jpg',         brightness: 0.28 },
+    { name: 'Moonlit Night',  url: 'assets/sky/moonlit-night.jpg', brightness: 0.28 }
+  ],
+  start: 0,                       // sky shown on a visitor's first visit (their last pick is remembered)
+  radius: 90,                     // must stay inside the camera's far plane (100)
+  spin: 0.004,                    // radians/sec — the slow drift
+  stars: IS_TOUCH ? 900 : 1800,   // twinkling foreground stars
+  reflections: 0.25,              // how strongly metal surfaces (gold frames) mirror the sky (0 = off)
+  fogTint: 0.3                    // fog = sky's horizon colour × this (lower = darker, moodier)
+};
+const skyGroup = new THREE.Group();   // follows the camera every frame
+scene.add(skyGroup);
+let starMat = null;
+
+if(SKY.enabled){
+  // --- twinkling star layer ---
+  const n = SKY.stars;
+  const pos = new Float32Array(n * 3), phase = new Float32Array(n), size = new Float32Array(n);
+  for(let i = 0; i < n; i++){
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = 84;
+    const s = Math.sqrt(1 - u*u);
+    pos[i*3] = r * s * Math.cos(th); pos[i*3+1] = r * u; pos[i*3+2] = r * s * Math.sin(th);
+    phase[i] = Math.random();
+    size[i] = 1 + Math.pow(Math.random(), 6) * 3.5;   // mostly pinpricks, a few bright ones
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  starGeo.setAttribute('phase', new THREE.BufferAttribute(phase, 1));
+  starGeo.setAttribute('size', new THREE.BufferAttribute(size, 1));
+  starMat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, pixelRatio: { value: renderer.getPixelRatio() } },
+    vertexShader: `
+      attribute float phase; attribute float size;
+      uniform float time; uniform float pixelRatio;
+      varying float vTwinkle;
+      void main(){
+        vTwinkle = 0.35 + 0.65 * (0.5 + 0.5 * sin(time * (0.6 + phase * 2.4) + phase * 6.2831));
+        gl_PointSize = size * pixelRatio;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying float vTwinkle;
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        if(d > 0.5) discard;
+        gl_FragColor = vec4(0.93, 0.95, 1.0, smoothstep(0.5, 0.0, d) * vTwinkle * 0.8);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  skyGroup.add(new THREE.Points(starGeo, starMat));
+
+}
+
+// --- the panorama itself, swappable at runtime ---
+const skyTextures = {};          // url -> texture, so each sky downloads only once
+let skyMesh = null, skyIndex = 0, skyEnv = null, skyPmrem = null;
+
+function applySky(tex, def){
+  const b = def.brightness;
+  if(!skyMesh){
+    const geo = new THREE.SphereGeometry(SKY.radius, 64, 32);
+    geo.scale(-1, 1, 1);   // view the inside without mirroring the image
+    skyMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ fog: false, depthWrite: false }));
+    skyMesh.renderOrder = -1;   // always drawn first, behind everything
+    skyGroup.add(skyMesh);
+  }
+  skyMesh.material.map = tex;
+  skyMesh.material.color.setRGB(b, b, b);
+  skyMesh.material.needsUpdate = true;
+
+  // fog + backdrop take the average colour of the horizon band
+  const c = document.createElement('canvas'); c.width = 64; c.height = 32;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(tex.image, 0, 0, 64, 32);
+  const px = ctx.getImageData(0, 13, 64, 6).data;
+  let rr = 0, gg = 0, bb = 0;
+  for(let i = 0; i < px.length; i += 4){ rr += px[i]; gg += px[i+1]; bb += px[i+2]; }
+  const cnt = px.length / 4;
+  const f = b * SKY.fogTint;
+  const horizon = new THREE.Color(rr/cnt/255 * f, gg/cnt/255 * f, bb/cnt/255 * f);
+  scene.fog.color.copy(horizon);
+  scene.background = horizon.clone();
+
+  // faint sky reflections in metal surfaces only (the gold frames). Non-metal
+  // surfaces get none — otherwise the sky floods the marble with light and the
+  // night turns into daytime.
+  if(SKY.reflections > 0){
+    if(!skyPmrem) skyPmrem = new THREE.PMREMGenerator(renderer);
+    if(skyEnv) skyEnv.dispose();   // free the previous sky's reflection map
+    skyEnv = skyPmrem.fromEquirectangular(tex);
+    scene.environment = skyEnv.texture;
+    scene.traverse(o => {
+      if(o.material && o.material.isMeshStandardMaterial)
+        o.material.envMapIntensity = o.material.metalness > 0.5 ? SKY.reflections : 0;
+    });
+  }
+}
+
+function setSky(i, announce){
+  const def = SKY.skies[i];
+  skyIndex = i;
+  try { localStorage.setItem('shdwyi-sky', def.name); } catch(e){}
+  const show = tex => {
+    if(skyIndex !== i) return;   // the visitor already moved on to another sky
+    applySky(tex, def);
+    if(announce) showToast('☾ Sky: ' + def.name);
+  };
+  if(skyTextures[def.url]) return show(skyTextures[def.url]);
+  if(announce) showToast('☾ Loading sky: ' + def.name + '…');
+  new THREE.TextureLoader().load(def.url,
+    tex => { skyTextures[def.url] = tex; show(tex); },
+    undefined,
+    () => { console.info('No sky image at ' + def.url); if(announce) showToast('Sky not found: ' + def.name); });
+}
+
+function nextSky(){
+  if(SKY.enabled) setSky((skyIndex + 1) % SKY.skies.length, true);
+}
+
+// first sky: the visitor's last pick if they have one, otherwise SKY.start
+if(SKY.enabled){
+  const saved = (()=>{ try { return localStorage.getItem('shdwyi-sky'); } catch(e){ return null; } })();
+  const savedIdx = SKY.skies.findIndex(s => s.name === saved);
+  setSky(savedIdx >= 0 ? savedIdx : SKY.start, false);
+}
+
+function updateSky(dt){
+  skyGroup.position.copy(camera.position);
+  skyGroup.rotation.y += dt * SKY.spin;
+  if(starMat) starMat.uniforms.time.value = performance.now() * 0.001;
+}
 
 // ---------- Paintings (two flanking rows down a long aisle) ----------
 const paintingGroups = [];
@@ -1835,6 +2000,7 @@ addEventListener('keydown', e=>{
   if(e.key.toLowerCase()==='m') toggleMute();
   if(e.key.toLowerCase()==='n') nextTrack();
   if(e.key.toLowerCase()==='f') togglePOV();
+  if(e.key.toLowerCase()==='k') nextSky();
   if(e.key === ' ') tryJump();
 });
 addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
@@ -2407,6 +2573,11 @@ if(IS_TOUCH){
   nextBtn.textContent = '♪ Next song';
   nextBtn.addEventListener('click', ()=> nextTrack());
   document.getElementById('info-panel').appendChild(nextBtn);
+  const skyBtn = document.createElement('div');
+  skyBtn.id = 'touch-sky';
+  skyBtn.textContent = '☾ Change sky';
+  skyBtn.addEventListener('click', ()=> nextSky());
+  document.getElementById('info-panel').appendChild(skyBtn);
 }
 
 // ---------- Look sensitivity (slider in the controls panel; remembered) ----------
@@ -2483,7 +2654,7 @@ let povHintShown = false;
 // the real word back in left-to-right. Only text nodes change, so nested markup
 // (arrows, numbered index badges, key caps) survives untouched.
 const GLITCH_SELECTOR = [
-  '#nav span', '.toc-item', '#prompt', '.panel-label', '#touch-next',
+  '#nav span', '.toc-item', '#prompt', '.panel-label', '#touch-next', '#touch-sky',
   '#page-close', '.contact-line a', '.c-form button',
   '.pp-back', '.pp-btn', '.pp-nav a'
 ].join(', ');
@@ -2568,6 +2739,7 @@ function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(0.05, clock.getDelta());
   updateAtmosphere(dt);
+  updateSky(dt);
   updateFloatingPaintings(dt);
   updateCharacterWisps();
   // slow breathing pulse on the character's glow
