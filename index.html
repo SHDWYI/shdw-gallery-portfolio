@@ -629,7 +629,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js"></script>
+<script src="assets/js/living-painting.js?v=8"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -920,6 +920,25 @@ const PROJECTS = [
     tags: ['Digital Art'],
     color: 0x201c1f, accent: 0x8a8f9a,
     art: 'assets/art/requiem.png',
+    // living painting: when you walk right up to her (once per page load), or
+    // whenever you jump to her from the gallery index, she dives into an
+    // empty void, the nebula blooms and she swims into her pose (AI intro, ends on
+    // the exact art). Then: the nebula flows like deep water, a ring wave spreads
+    // from her now and then, stars twinkle, bubbles rise and become stars, her
+    // tail sways. She herself stays still.
+    animated: {
+      intro: { src: 'assets/projects/requiem/animated/requiem-intro.mp4', fit: { x: 1, y: -100, scale: 0.9205 },
+               fade: 0.3 },   // she glides into the exact pose only in the last ~0.3s
+      layers: [
+        { type: 'currents', amp: 2.2, scale: 240, speed: 0.04,
+          keep: { box: [455, 640, 240, 660], maxLum: 50, grow: 5 },
+          ripple: { x: 580, y: 900, every: [22, 32], first: 1.0, speed: 140, width: 42, amp: 7, glow: 0.09, reach: 900 } },
+        { type: 'flutter', anchor: [548, 905], reach: 330, amp: 6, wavelength: 220, speed: 0.18,
+          areas: [{ poly: [[505,895],[600,895],[640,980],[690,1200],[650,1300],[455,1285],[470,1000]], feather: 20 }] },
+        { type: 'twinkle', count: 150, flares: 10, minContrast: 45 },
+        { type: 'bubbles', x: 648, y: 676, every: 1.8, rise: [16, 30], size: [2.6, 5.5], life: 5 }
+      ]
+    },
     page: {
       eyebrow: 'Digital Art',
       role: 'Artist',
@@ -1629,6 +1648,54 @@ const floatAnimation = {
 
 
 
+// ---------- Name plaques ----------
+// An engraved brass plate centred on each frame's lower border with the
+// project's title. One shared plate image; each plaque draws its own title on
+// a copy once the image and the serif font are ready.
+const NAMEPLATE = {
+  src: 'assets/ui/nameplate.png',
+  width: 3.6,                 // world units (the frame is 7.6 wide)
+  centerY: -4.5,              // on the frame's visible bottom border (art ends at -4.17)
+  z: 0.095,                   // just in front of the frame face (0.08)
+  font: '"Cormorant Garamond", Georgia, serif'
+};
+const nameplateReady = Promise.all([
+  new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = NAMEPLATE.src; }),
+  document.fonts ? document.fonts.load(`600 64px ${NAMEPLATE.font}`).catch(() => {}) : null
+]).then(([img]) => img);
+
+function createNamePlaque(title){
+  const h = NAMEPLATE.width * 200 / 1024;            // the plate image is 1024×200
+  const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 200;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 8;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(NAMEPLATE.width, h),
+    new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.05, roughness: 0.45, metalness: 0.25,
+                                     emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.22 })
+  );
+  mesh.position.set(0, NAMEPLATE.centerY, NAMEPLATE.z);
+  nameplateReady.then(img => {
+    const c = canvas.getContext('2d');
+    c.drawImage(img, 0, 0, 1024, 200);
+    // fit the title inside the plain brass between the corner roses
+    const maxW = 720, text = title.toUpperCase();
+    let size = 80;
+    const setFont = () => { c.font = `600 ${size}px ${NAMEPLATE.font}`; };
+    setFont();
+    const spaced = s => s.split('').join(' ');   // a little letter-spacing
+    while (c.measureText(spaced(text)).width > maxW && size > 26) { size -= 2; setFont(); }
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    const x = 512, y = 102;
+    // engraved: a light lip below, the dark cut, a soft shadow inside the top edge
+    c.fillStyle = 'rgba(255,236,190,0.55)'; c.fillText(spaced(text), x, y + 2);
+    c.fillStyle = 'rgba(40,26,6,0.92)'; c.fillText(spaced(text), x, y);
+    c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillText(spaced(text), x, y - 1);
+    tex.needsUpdate = true;
+  }).catch(() => { mesh.visible = false; });
+  return mesh;
+}
+
 PROJECTS.forEach((proj, i)=>{
   const onLeft = i % 2 === 0;
   const rank = Math.floor(i/2);                       // 0..3 depth rank
@@ -1661,6 +1728,7 @@ function createPainting(proj){
   // One call builds whichever of the two render modes are currently on in
   // frameSettings — real 3D body, flat 2.5D plane, both, or neither.
   frameArtGroup.add(frameSystem.createInstance());
+  frameArtGroup.add(createNamePlaque(proj.title));
 
   // Canvas (placeholder art via CanvasTexture)
   const canvas = document.createElement('canvas');
@@ -1758,12 +1826,19 @@ function createPainting(proj){
 //  untouched still by assets/js/living-painting.js (video loops inside soft-
 //  edged motion areas, dimmed lightning, scripted light flicker), so everything
 //  outside those areas stays the exact original pixels. Here we only decide
-//  when each painting plays (visitor nearby) and push frames to its texture at
-//  ANIM_FPS. abyss-animated-test.html (?p=…) previews and checks a setup.
+//  when each painting plays and push frames to its texture at ANIM_FPS.
+//  To keep the gallery smooth only ONE painting is ever alive: the nearest one
+//  within ANIM_RANGE that the camera is actually looking at — every other
+//  painting rests as a still. abyss-animated-test.html (?p=…) previews a setup.
 // ============================================================
-const ANIM_FPS = 24;       // frame refreshes per second (≈ the videos' own rate)
-const ANIM_RANGE = 45;     // play only within this distance of the painting
+const ANIM_FPS = IS_TOUCH ? 20 : 24;   // frame refreshes per second
+const ANIM_RANGE = 22;     // alive only this close (the index's viewing spot is 16.75 away)…
+const ANIM_VIEW_DOT = 0.6; // …and only while the camera looks at it (within ~53°)
+const INTRO_RANGE = 10;    // an intro starts only when you walk right up to it
 const animatedPaintings = [];
+const _camDir = new THREE.Vector3(), _toArt = new THREE.Vector3();
+// distance across the floor (the paintings hang ~6 units up; height shouldn't count)
+const floorDist = g => Math.hypot(g.userData.worldPos.x - character.position.x, g.userData.worldPos.z - character.position.z);
 
 function setupAnimatedArt(proj, img, actx, coverRect, tex, group){
   const lp = new LivingPainting(img, proj.animated);
@@ -1773,16 +1848,56 @@ function setupAnimatedArt(proj, img, actx, coverRect, tex, group){
   actx.clearRect(0, 0, actx.canvas.width, actx.canvas.height);
   actx.drawImage(lp.canvas, ...coverRect);
   tex.needsUpdate = true;
-  animatedPaintings.push({ group, actx, coverRect, tex, lp, playing: false, last: 0 });
+  animatedPaintings.push({ group, actx, coverRect, tex, lp, playing: false, last: 0, forceIntro: false });
+}
+
+// the one painting allowed to animate right now (or null)
+function activeAnimatedPainting(){
+  if(state !== 'explore' || pageOpen) return null;
+  camera.getWorldDirection(_camDir);
+  let best = null, bestD = ANIM_RANGE;
+  animatedPaintings.forEach(p => {
+    const d = floorDist(p.group);
+    if(d >= bestD) return;
+    _toArt.copy(p.group.userData.worldPos).sub(camera.position).normalize();
+    if(_camDir.dot(_toArt) < ANIM_VIEW_DOT) return;
+    best = p; bestD = d;
+  });
+  return best;
+}
+
+// while a painting animates its texture is re-uploaded every frame: skip the mipmap
+// rebuild then (it's close up anyway), and restore full mipmapped quality at rest
+function setLiveTexture(p, live){
+  p.tex.generateMipmaps = !live;
+  p.tex.minFilter = live ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter;
+  p.tex.needsUpdate = true;
+}
+
+// jumping to a painting from the gallery index replays its intro, if it has one
+function replayIntroFor(group){
+  const p = animatedPaintings.find(q => q.group === group);
+  if(!p || !p.lp.intro) return;
+  p.lp.restartIntro();
+  p.forceIntro = true;
+  if(p.playing){ p.playing = false; setLiveTexture(p, false); }   // so the next update starts it afresh
 }
 
 function updateAnimatedPaintings(now){
+  const active = activeAnimatedPainting();
   animatedPaintings.forEach(p => {
-    const near = state === 'explore' && !pageOpen &&
-      character.position.distanceTo(p.group.userData.worldPos) < ANIM_RANGE;
-    if(near !== p.playing){
-      p.playing = near;
-      if(near) p.lp.play(); else p.lp.pause();
+    let want = p === active;
+    const I = p.lp.intro;
+    if(want && I && I.state === 'waiting' && !p.forceIntro &&
+       floorDist(p.group) > INTRO_RANGE) want = false;   // the void waits for you to come close
+    if(I && I.state !== 'waiting') p.forceIntro = false;
+    if(want !== p.playing){
+      p.playing = want;
+      if(want) p.lp.play(); else p.lp.pause();
+      setLiveTexture(p, want);
+    }
+    if(!p.playing && p.lp.dirty){                       // e.g. an intro's first frame arrived while far away
+      p.lp.dirty = false; p.actx.drawImage(p.lp.canvas, ...p.coverRect); p.tex.needsUpdate = true;
     }
     if(!p.playing || now - p.last < 1000 / ANIM_FPS || !p.lp.ready()) return;
     p.last = now;
@@ -2791,6 +2906,7 @@ function teleportToPainting(i){
     ).multiplyScalar(camDist);
     camera.position.copy(target).add(offset);        // snap — no cross-room sweep
     camera.lookAt(target);
+    replayIntroFor(g);                               // e.g. Requiem's dive plays again
     // first teleport of the visit: drop into first person for the full effect,
     // with a hint (same toast as the music) on how to switch back
     if(!povHintShown){
@@ -2890,9 +3006,27 @@ addEventListener('resize', ()=>{
 });
 
 // ---------- Main loop ----------
+// Adaptive resolution: every ~2s look at the average frame time; if frames are
+// slow, render at a lower pixel ratio (smoother), and step back up when there's
+// headroom. Never above the device's own ratio (capped as at startup).
+const PERF = { maxPR: renderer.getPixelRatio(), minPR: 0.75, sum: 0, n: 0 };
+function adaptResolution(raw){
+  if(raw > 0.25) return;                       // tab was hidden / a hitch — ignore
+  PERF.sum += raw; PERF.n++;
+  if(PERF.sum < 2) return;
+  const avg = PERF.sum / PERF.n; PERF.sum = PERF.n = 0;
+  let pr = renderer.getPixelRatio();
+  if(avg > 1/45 && pr > PERF.minPR) pr = Math.max(PERF.minPR, pr - 0.25);
+  else if(avg < 1/57 && pr < PERF.maxPR) pr = Math.min(PERF.maxPR, pr + 0.25);
+  else return;
+  renderer.setPixelRatio(pr);
+}
+
 function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(0.05, clock.getDelta());
+  const raw = clock.getDelta();
+  adaptResolution(raw);
+  const dt = Math.min(0.05, raw);
   updateAtmosphere(dt);
   updateSky(dt);
   updateAnimatedPaintings(performance.now());

@@ -42,6 +42,15 @@
        { type: 'rain', count, speed: [min, max], length: [min, max], slant, alpha }
    • a ripples layer: raindrops landing on a wet floor (perspective rings)
        { type: 'ripples', areas, exclude?, count, size: [min, max], life: [min, max] }
+   • a currents layer: the whole background flows slowly like deep water, and
+       every so often a ring wave spreads out from a point (WebGL)
+       { type: 'currents', amp, scale, speed, keep: { box, maxLum, grow },
+         ripple: { x, y, every: [min, max], speed, width, amp, first } }
+       keep = a dark silhouette (found by luminance inside box) that stays still
+   • a twinkle layer: the painted stars shimmer; the brightest now and then flare
+       { type: 'twinkle', areas?, count, flares, minContrast }
+   • a bubbles layer: tiny bubbles rising from a point, wobbling, fading to stars
+       { type: 'bubbles', x, y, every, rise: [min, max], size: [min, max], life }
    • a cards layer: playing cards drifting down one by one, tumbling; each flip
        to the face side glitches; they land, lie flat and fade
        { type: 'cards', every: [min, max], fall: [min, max] px/s, size: [min, max],
@@ -50,6 +59,14 @@
        { type: 'blink', src, fit, eyes: [{ x, y, w, h }], areas, every: [min, max] }
    • a tear layer: a glassy droplet that wells up and creeps down a path
        { type: 'tear', path: [[x, y], ...], size, well, travel, fade, rest }
+
+   config.intro (optional): a one-time opening video that ends on the art
+       { src, fit, fade, onceKey }
+       Until it plays the painting shows the video's first frame; play() runs
+       it, the last `fade` seconds cross-fade into the living painting, and
+       the layers' clock starts when it ends. restartIntro() puts it back to
+       the void to play again. With onceKey it plays only once per browser
+       session (sessionStorage); without, once per page load.
 
    areas: [x, y, w, h] boxes or { poly: [[x, y], ...] }, in still
    pixels; either may carry `feather` (soft-edge px, default 18).
@@ -259,6 +276,115 @@
     return true;
   }
 
+  // ---- currents: slow water-like flow over the whole painting + ring waves ----
+  const CURRENTS_FS = `
+    precision mediump float;
+    uniform sampler2D img, keep;
+    uniform vec2 size;
+    uniform float t, amp, scale, speed;
+    uniform vec3 ring;            // x, y, radius (radius < 0: no ring)
+    uniform vec3 ringShape;       // width, strength, glow
+    varying vec2 uv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+    }
+    void main(){
+      vec2 p = uv * size;
+      vec2 q = p / scale;
+      // two drifting noise fields make a lazy, swirling current
+      vec2 off = vec2(noise(q + vec2(t * speed, 0.0)) - 0.5, noise(q + vec2(5.2, t * speed * 0.8)) - 0.5);
+      off += 0.5 * vec2(noise(q * 2.3 - vec2(0.0, t * speed * 1.4)) - 0.5, noise(q * 2.3 + vec2(t * speed * 1.2, 3.7)) - 0.5);
+      off *= amp * 2.0;
+      float glow = 0.0;
+      if (ring.z >= 0.0) {
+        vec2 r = p - ring.xy; float d = length(r);
+        float band = exp(-pow((d - ring.z) / ringShape.x, 2.0));
+        off += normalize(r + 0.001) * band * ringShape.y * sin((d - ring.z) / ringShape.x * 3.14159);
+        glow = band * ringShape.z;
+      }
+      float k = 1.0 - texture2D(keep, uv).a;        // the silhouette stays still
+      vec3 c = texture2D(img, (p - off * k) / size).rgb;
+      c += glow * k * vec3(0.55, 0.85, 1.0);
+      gl_FragColor = vec4(c, 1.0);
+    }`;
+  function buildCurrents(L, img, W, H) {
+    const c = makeCanvas(W, H), gl = c.getContext('webgl', { premultipliedAlpha: true, antialias: false });
+    if (!gl) return false;
+    // the silhouette to keep still: dark pixels inside the box, grown a little
+    const keep = makeCanvas(W, H);
+    if (L.keep) {
+      const [bx, by, bw, bh] = L.keep.box, s = makeCanvas(W, H).getContext('2d', { willReadFrequently: true });
+      s.drawImage(img, 0, 0);
+      const d = s.getImageData(bx, by, bw, bh), kd = new ImageData(bw, bh);
+      for (let i = 0; i < d.data.length; i += 4) if (0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2] < (L.keep.maxLum || 45)) kd.data[i + 3] = 255;
+      const raw = makeCanvas(W, H); raw.getContext('2d').putImageData(kd, bx, by);
+      const k = keep.getContext('2d'); k.filter = `blur(${L.keep.grow || 6}px)`;
+      for (let n = 0; n < 3; n++) k.drawImage(raw, 0, 0);
+    }
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, FLUTTER_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, CURRENTS_FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'pos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    [[0, img], [1, keep]].forEach(([unit, src]) => {
+      gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    });
+    const u = n => gl.getUniformLocation(prog, n);
+    gl.uniform1i(u('img'), 0); gl.uniform1i(u('keep'), 1);
+    gl.uniform2f(u('size'), W, H);
+    gl.uniform1f(u('amp'), L.amp || 2.5); gl.uniform1f(u('scale'), L.scale || 260); gl.uniform1f(u('speed'), L.speed || 0.05);
+    gl.viewport(0, 0, W, H);
+    L.gl = gl; L.glCanvas = c; L.uT = u('t'); L.uRing = u('ring'); L.uRingShape = u('ringShape');
+    if (L.ripple) L.sched = eventTimes(L.ripple.every || [20, 30], 41);
+    return true;
+  }
+
+  // ---- twinkle: the painting's own stars (sharp bright points) ----
+  function buildTwinkle(L, img, W, H) {
+    const a = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); a.drawImage(img, 0, 0);
+    const b = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); b.filter = 'blur(6px)'; b.drawImage(img, 0, 0);
+    const d = a.getImageData(0, 0, W, H).data, bl = b.getImageData(0, 0, W, H).data;
+    const area = L.areas ? L.mask.getContext('2d').getImageData(0, 0, W, H).data : null;
+    const lum = (q, i) => 0.299 * q[i] + 0.587 * q[i + 1] + 0.114 * q[i + 2], stars = [];
+    for (let y = 4; y < H - 4; y++) for (let x = 4; x < W - 4; x++) {
+      const i = (y * W + x) * 4; if (area && area[i + 3] < 128) continue;
+      const c = lum(d, i) - lum(bl, i); if (c < (L.minContrast || 45)) continue;
+      let peak = true;
+      for (let dy = -2; dy <= 2 && peak; dy++) for (let dx = -2; dx <= 2; dx++) if (lum(d, i + (dy * W + dx) * 4) > lum(d, i)) { peak = false; break; }
+      if (peak) stars.push({ x, y, c });
+    }
+    stars.sort((p, q) => q.c - p.c);
+    const pick = [];
+    for (const s of stars) { if (pick.length >= (L.count || 140)) break; if (!pick.some(p => Math.abs(p.x - s.x) < 10 && Math.abs(p.y - s.y) < 10)) pick.push(s); }
+    L.stars = pick.map((s, n) => {
+      const r = 4, cv = makeCanvas(r * 2, r * 2), cx = cv.getContext('2d'), id = cx.createImageData(r * 2, r * 2);
+      for (let yy = 0; yy < r * 2; yy++) for (let xx = 0; xx < r * 2; xx++) {
+        const i = ((s.y - r + yy) * W + (s.x - r + xx)) * 4, j = (yy * r * 2 + xx) * 4, f = 1 - smoothstep(0.3, 1, Math.hypot(xx - r + 0.5, yy - r + 0.5) / r);
+        id.data[j] = d[i]; id.data[j + 1] = d[i + 1]; id.data[j + 2] = d[i + 2]; id.data[j + 3] = 255 * f;
+      }
+      cx.putImageData(id, 0, 0);
+      return { x: s.x - r, y: s.y - r, cx: s.x, cy: s.y, sprite: cv, seed: n * 1.37, rate: 0.6 + (hash(n * 3.1) * 0.5 + 0.5) * 1.6, flare: n < (L.flares || 8) };
+    });
+    // a soft four-point glint
+    const G = 48, gc = makeCanvas(G, G), g = gc.getContext('2d');
+    const rg = g.createRadialGradient(G / 2, G / 2, 0, G / 2, G / 2, G / 2);
+    rg.addColorStop(0, 'rgba(255,255,255,0.95)'); rg.addColorStop(0.12, 'rgba(190,235,255,0.6)'); rg.addColorStop(0.4, 'rgba(120,190,255,0.12)'); rg.addColorStop(1, 'rgba(80,140,255,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, G, G);
+    g.globalCompositeOperation = 'lighter';
+    [[G, 1.6], [1.6, G]].forEach(([w, h]) => { const lg = g.createRadialGradient(G / 2, G / 2, 0, G / 2, G / 2, G / 2); lg.addColorStop(0, 'rgba(220,245,255,0.9)'); lg.addColorStop(1, 'rgba(150,200,255,0)'); g.fillStyle = lg; g.fillRect((G - w) / 2, (G - h) / 2, w, h); });
+    L.glint = gc;
+    L.flareSched = eventTimes(L.flareEvery || [3, 7], 53);
+  }
+
   // ---- embers: deterministic particles (same time in = same frame out) ----
   function buildEmbers(L, W, H) {
     // candidate birth points inside the areas
@@ -377,6 +503,12 @@
     const u = t % sched.cycle; let since = Infinity;
     for (const e of sched.list) { if (e > u) break; since = u - e; }
     return since;
+  }
+  // a running count of events so far (to vary which thing each event picks)
+  function eventIndex(sched, t) {
+    const u = t % sched.cycle; let n = 0;
+    for (const e of sched.list) { if (e > u) break; n++; }
+    return Math.floor(t / sched.cycle) * sched.list.length + Math.max(0, n - 1);
   }
   // per-pixel weight sprites (add = the lit pixels again, shade = black over them)
   function weightSprites(img, W, H, box, weightAt) {
@@ -524,6 +656,12 @@
         buildGlow(L, img, W, H);
       } else if (L.type === 'embers') {
         buildEmbers(L, W, H);
+      } else if (L.type === 'currents') {
+        if (!buildCurrents(L, img, W, H)) L.type = 'none';          // no WebGL: stay still
+      } else if (L.type === 'twinkle') {
+        buildTwinkle(L, img, W, H);
+      } else if (L.type === 'bubbles') {
+        // drawn fresh each frame; nothing to prepare
       } else if (L.type === 'neon') {
         const k = Object.assign({ minLum: 60, fullLum: 150 }, L.key), b = boundsOf(L.mask, W, H);
         const md = L.mask.getContext('2d').getImageData(0, 0, W, H).data;
@@ -597,14 +735,59 @@
       return L;
     });
     this.videos = Object.values(videos);
+    if (config.intro) this.setupIntro(config.intro);
   }
 
+  // ---- the one-time intro ----
+  const seen = key => { try { return sessionStorage.getItem(key) === '1'; } catch (e) { return false; } };
+  LivingPainting.prototype.setupIntro = function (cfg) {
+    if (cfg.onceKey && seen(cfg.onceKey)) return;             // already watched this visit
+    this.intro = { cfg };
+    this.restartIntro();
+  };
+  // back to the empty void, ready to play the intro again (a fresh <video> each
+  // time: rewinding needs a server that supports range requests)
+  LivingPainting.prototype.restartIntro = function () {
+    const I = this.intro; if (!I) return;
+    if (I.v) { I.v.pause(); I.v.removeAttribute('src'); I.v.load(); }
+    const v = I.v = Object.assign(document.createElement('video'),
+      { src: I.cfg.src, muted: true, playsInline: true, preload: 'auto', crossOrigin: 'anonymous' });
+    I.state = 'waiting'; I.fadeStart = null;
+    this.ctx.globalAlpha = 1; this.ctx.globalCompositeOperation = 'source-over';
+    this.ctx.fillStyle = '#03040c'; this.ctx.fillRect(0, 0, this.W, this.H);
+    this.dirty = true;
+    // until it plays, the painting is the empty void (the video's first frame)
+    v.addEventListener('loadeddata', () => { if (I.v === v && I.state === 'waiting') { this.drawIntroFrame(); this.dirty = true; } }, { once: true });
+    v.addEventListener('ended', () => {
+      if (I.v !== v) return;
+      I.state = 'done';
+      if (I.fadeStart == null) this.startedAt = performance.now();   // (the layers' clock normally starts with the fade)
+      this.videos.forEach(x => x.play().catch(() => {}));
+      try { if (I.cfg.onceKey) sessionStorage.setItem(I.cfg.onceKey, '1'); } catch (e) {}
+    });
+  };
+  LivingPainting.prototype.drawIntroFrame = function (alpha = 1) {
+    const { v, cfg } = this.intro, f = cfg.fit;
+    this.ctx.globalCompositeOperation = 'source-over'; this.ctx.globalAlpha = alpha;
+    this.ctx.drawImage(v, f.x, f.y, v.videoWidth * f.scale, v.videoHeight * f.scale);
+    this.ctx.globalAlpha = 1;
+  };
+
   LivingPainting.prototype.play = function () {
+    const I = this.intro;
+    if (I && I.state !== 'done') {                          // start (or resume) the intro
+      I.state = 'playing'; I.v.play().catch(() => {});
+      return;
+    }
     this.startedAt = performance.now();
     this.videos.forEach(v => { v.currentTime = 0; v.play().catch(() => {}); });   // start together, in step
   };
-  LivingPainting.prototype.pause = function () { this.videos.forEach(v => v.pause()); };
+  LivingPainting.prototype.pause = function () {
+    if (this.intro && this.intro.state === 'playing') this.intro.v.pause();
+    this.videos.forEach(v => v.pause());
+  };
   LivingPainting.prototype.ready = function () {
+    if (this.intro && this.intro.state !== 'done' && this.intro.v.readyState < 2) return false;
     return this.videos.every(v => v.readyState >= 2) && this.images.every(i => i.complete && i.naturalWidth);
   };
 
@@ -616,6 +799,21 @@
   }
 
   LivingPainting.prototype.render = function (now) {
+    const I = this.intro;
+    if (I && I.state !== 'done') {
+      if (I.state === 'waiting') return this.canvas;          // the void, until play()
+      const v = I.v, fade = I.cfg.fade || 0.8, left = v.duration - v.currentTime;
+      if (!(left < fade)) { this.drawIntroFrame(); return this.canvas; }
+      // last moments: the living painting comes up underneath and the video fades out
+      if (I.fadeStart == null) { I.fadeStart = now; this.startedAt = now; }
+      this.renderLayers(now);
+      this.drawIntroFrame(Math.max(0, Math.min(1, left / fade)));
+      return this.canvas;
+    }
+    return this.renderLayers(now);
+  };
+
+  LivingPainting.prototype.renderLayers = function (now) {
     const { W, H, ctx } = this;
     // keep loops of different files in step (they share a length but can drift apart)
     const lead = this.videos[0];
@@ -634,6 +832,10 @@
         continue;
       }
       if (L.type === 'embers') { this.renderEmbers(L, t); continue; }
+      if (L.type === 'currents') { this.renderCurrents(L, t); continue; }
+      if (L.type === 'twinkle') { this.renderTwinkle(L, t); continue; }
+      if (L.type === 'bubbles') { this.renderBubbles(L, t); continue; }
+      if (L.type === 'none') continue;
       if (L.type === 'neon') { this.renderNeon(L, t); continue; }
       if (L.type === 'glitch') { this.renderGlitch(L, t); continue; }
       if (L.type === 'pulse') { this.renderPulse(L, t); continue; }
@@ -747,6 +949,75 @@
     k.globalCompositeOperation = 'destination-in'; k.drawImage(L.mask, 0, 0);
     this.ctx.globalCompositeOperation = 'lighter'; this.ctx.drawImage(L.layer, 0, 0);
     this.ctx.globalCompositeOperation = 'source-over';
+  };
+
+  // currents: draws the whole painting, gently flowing, with any ring wave in it
+  LivingPainting.prototype.renderCurrents = function (L, t) {
+    const gl = L.gl, R = L.ripple;
+    gl.uniform1f(L.uT, t);
+    let radius = -1, fade = 0;
+    if (R) {
+      let since = (R.first != null && t >= R.first && t < R.first + 8) ? t - R.first : sinceEvent(L.sched, t);
+      radius = since * (R.speed || 130);
+      fade = 1 - smoothstep(0.55, 1, radius / (R.reach || 900));
+      if (fade <= 0) radius = -1;
+    }
+    gl.uniform3f(L.uRing, R ? R.x : 0, R ? R.y : 0, radius);
+    gl.uniform3f(L.uRingShape, R ? R.width || 40 : 1, R ? (R.amp || 6) * fade : 0, R ? (R.glow || 0.06) * fade : 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    this.ctx.drawImage(L.glCanvas, 0, 0);
+  };
+
+  // twinkle: each star brightens and dims at its own pace; now and then one of
+  // the brightest flares with a soft four-point glint
+  LivingPainting.prototype.renderTwinkle = function (L, t) {
+    const ctx = this.ctx;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const s of L.stars) {
+      const v = vnoise(t * s.rate, s.seed) * 1.4;
+      if (v > 0.15) { ctx.globalAlpha = Math.min(1, (v - 0.15) * 1.3); ctx.drawImage(s.sprite, s.x, s.y); }
+    }
+    // flares: one of the brightest stars at each event
+    const since = sinceEvent(L.flareSched, t), dur = 1.6, flares = L.stars.filter(s => s.flare);
+    if (since < dur && flares.length) {
+      const s = flares[eventIndex(L.flareSched, t) % flares.length];
+      const k = Math.sin(Math.PI * since / dur), sz = 34 * (0.6 + 0.4 * k);
+      ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = k * 0.9;
+      ctx.drawImage(L.glint, s.cx - sz / 2, s.cy - sz / 2, sz, sz);
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  };
+
+  // bubbles: little glassy rings rising from a point with a lazy wobble; near the
+  // end of their rise they shrink into a bright point and wink out, like stars
+  LivingPainting.prototype.renderBubbles = function (L, t) {
+    const ctx = this.ctx, every = L.every || 1.6, [r0, r1] = L.rise || [18, 32], [s0, s1] = L.size || [1.6, 4], life = L.life || 5;
+    const R = (k, s, lo, hi) => lo + (hi - lo) * (hash(k * 9.7 + s * 3.3) * 0.5 + 0.5);
+    for (let k = Math.max(0, Math.floor((t - life) / every) - 1); k <= Math.floor(t / every); k++) {
+      if (hash(k * 5.5) < -0.35) continue;                         // irregular: some beats skip
+      const start = k * every + hash(k * 1.9) * every * 0.4, age = t - start;
+      if (age < 0 || age > life) continue;
+      const u = age / life, rise = R(k, 1, r0, r1), size = R(k, 2, s0, s1);
+      const x = L.x + R(k, 3, -4, 4) + age * R(k, 4, 2, 7) + Math.sin(age * R(k, 5, 2, 3.5) + k) * R(k, 6, 1.5, 4);
+      const y = L.y - rise * age - 4 * age * age * 0.2;
+      const a = smoothstep(0, 0.08, u) * (1 - smoothstep(0.75, 1, u));
+      const r = size * (1 + 0.3 * u) * (u > 0.7 ? 1 - (u - 0.7) / 0.3 * 0.7 : 1);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = 'rgba(10,40,90,0.35)'; ctx.lineWidth = 2;          // a faint dark rim reads on bright water
+      ctx.beginPath(); ctx.arc(x, y, r + 0.6, 0, 6.283); ctx.stroke();
+      ctx.strokeStyle = 'rgba(235,252,255,0.95)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.stroke();
+      ctx.fillStyle = 'rgba(200,240,255,0.15)'; ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.35, Math.max(0.5, r * 0.28), 0, 6.283); ctx.fill();
+      if (u > 0.7) {                                              // becoming a star
+        const k2 = Math.sin(Math.PI * (u - 0.7) / 0.3), g = 6 + 8 * k2;
+        ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = k2 * 0.8;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, g); grad.addColorStop(0, 'rgba(235,250,255,1)'); grad.addColorStop(1, 'rgba(120,200,255,0)');
+        ctx.fillStyle = grad; ctx.fillRect(x - g, y - g, g * 2, g * 2);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    ctx.globalAlpha = 1;
   };
 
   // neon: a faint electrical hum, and every few seconds a stutter (off-on-off-dim-on)
