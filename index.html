@@ -629,7 +629,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=11"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=14"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -955,6 +955,37 @@ const PROJECTS = [
     tags: ['Digital Art', 'Character'],
     color: 0x1a1620, accent: 0xd8dce6,
     art: 'assets/art/rebirth.png',
+    // living painting: from a distance he is cold, dark stone. Walk up (once per
+    // page load, or jump here from the index) and a heartbeat of light ignites
+    // in his chest, fire spreads out through every crack and into the flames
+    // around him, and his eyes snap on last. Then the lava keeps flowing through
+    // his cracks, his eyes smoulder and glare, the flames rise, embers drift up
+    // and he breathes. All procedural.
+    animated: {
+      intro: { type: 'ignite', center: [500, 600], dur: 4.4, eyes: [{ x: 427, y: 331, r: 42 }, { x: 578, y: 331, r: 42 }] },
+      layers: [
+        // rising flames + heat haze (his dark body stays still)
+        { type: 'currents', amp: 3, scale: 140, speed: 0.25, flow: [[0, 1], [0.25, 1.3]],
+          keep: { box: [150, 90, 700, 1290], maxLum: 70, grow: 4 } },
+        // the fire around him flickers
+        { type: 'glow', strength: 0.45, speed: 1.2,
+          areas: [{ poly: [[0,80],[1003,80],[1003,1450],[0,1450]], feather: 10 }],
+          exclude: [[380, 290, 100, 80], [530, 290, 100, 80]],
+          lobes: [{ x: 200, y: 900, r: 260 }, { x: 800, y: 900, r: 260 }, { x: 500, y: 1320, r: 300 },
+                  { x: 300, y: 520, r: 200 }, { x: 700, y: 520, r: 200 }, { x: 500, y: 240, r: 220 }] },
+        // lava flowing out from his heart through the cracks
+        { type: 'lavaflow', center: [500, 600], wavelength: 200, speed: 0.3, strength: 0.9, key: { minRed: 80, minRatio: 0.45 },
+          areas: [{ poly: [[180,110],[820,110],[860,900],[780,1360],[220,1360],[140,900]], feather: 10 }],
+          exclude: [[380, 290, 100, 80], [530, 290, 100, 80]] },
+        // burning eyes: smoulder, and glare now and then
+        { type: 'flare', spots: [{ x: 427, y: 331, r: 55 }, { x: 578, y: 331, r: 55 }], every: [5, 9], dur: 1.0, idle: 0.22, strength: 0.8 },
+        // embers rising from the fire
+        { type: 'embers', count: 40, rise: [25, 55], size: [1.2, 3], life: [2, 5],
+          areas: [{ poly: [[0,560],[230,560],[200,1420],[0,1420]], feather: 20 }, { poly: [[770,560],[1003,560],[1003,1420],[800,1420]], feather: 20 },
+                  { poly: [[100,1240],[900,1240],[900,1390],[100,1390]], feather: 20 }] },
+        { type: 'breathe', box: [130, 80, 750, 1320], pivot: [500, 1340], amount: 0.004, period: 3.6 }
+      ]
+    },
     page: {
       eyebrow: 'Digital Art',
       role: 'Artist',
@@ -1043,6 +1074,23 @@ const PROJECTS = [
     tags: ['App', 'React Native', 'AI'],
     color: 0x241418, accent: 0xe0324a,
     art: 'assets/art/forge.png',
+    // living painting: the app in use — the day's tasks get ticked (+10 XP), the
+    // XP bar rushes to full, LEVEL UP!, then it eases back to the art. The streak
+    // flame flickers, the quote card glows and light sweeps across the glass.
+    animated: {
+      layers: [
+        { type: 'glow', strength: 0.8, speed: 3, areas: [[290, 610, 90, 90]], lobes: [{ x: 334, y: 652, r: 45 }] },
+        { type: 'glow', strength: 0.4, speed: 0.5, areas: [{ poly: [[470,1150],[930,1050],[965,1175],[515,1305]], feather: 12 }],
+          lobes: [{ x: 720, y: 1180, r: 280 }] },
+        { type: 'appdemo', cycle: 16, axes: { x: [0.966, -0.259], y: [0.38, 0.925] },
+          checks: [{ x: 409, y: 926, r: 19 }, { x: 453, y: 1033, r: 19.5 }, { x: 493, y: 1142, r: 20 }],
+          xpText: { x: 590, y: 374, w: 112, h: 26, size: 21, color: '#8f5cf7', align: 'right' },
+          remaining: { x: 651, y: 559, w: 84, h: 42, size: 38, color: '#8f5cf7', weight: 700 },
+          levelText: { x: 278, y: 507, w: 76, h: 26, size: 19, color: '#8e8e93', align: 'left', weight: 500 },
+          bar: { from: [268, 551], to: [660, 430], thick: 11 } },
+        { type: 'sheen', poly: [[95,175],[640,85],[985,1190],[545,1430]], every: [6, 10], dur: 1.6, angle: -0.6, width: 140, alpha: 0.14 }
+      ]
+    },
     page: {
       eyebrow: 'App',
       role: 'Lead Developer — Product, AI & UX',
@@ -1882,13 +1930,17 @@ function setupAnimatedArt(proj, img, actx, coverRect, tex, group){
 function activeAnimatedPainting(){
   if(state !== 'explore' || pageOpen) return null;
   camera.getWorldDirection(_camDir);
-  let best = null, bestD = ANIM_RANGE;
+  // the one you're facing most squarely wins (distance only breaks near-ties), so
+  // a closer painting at the edge of the view doesn't steal it from the one ahead
+  let best = null, bestScore = -Infinity;
   animatedPaintings.forEach(p => {
     const d = floorDist(p.group);
-    if(d >= bestD) return;
+    if(d >= ANIM_RANGE) return;
     _toArt.copy(p.group.userData.worldPos).sub(camera.position).normalize();
-    if(_camDir.dot(_toArt) < ANIM_VIEW_DOT) return;
-    best = p; bestD = d;
+    const dot = _camDir.dot(_toArt);
+    if(dot < ANIM_VIEW_DOT) return;
+    const score = dot - 0.25 * d / ANIM_RANGE;
+    if(score > bestScore){ best = p; bestScore = score; }
   });
   return best;
 }

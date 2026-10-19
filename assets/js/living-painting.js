@@ -64,6 +64,18 @@
        { type: 'blush', spots: [{ x, y, rx, ry }], strength }
    • a breathe layer (put it last): a soft squash-and-stretch of a region
        { type: 'breathe', box: [x, y, w, h], pivot: [x, y], amount, period }
+   • a lavaflow layer: waves of heat travel outward through glowing cracks (WebGL)
+       { type: 'lavaflow', areas, exclude?, key: { minRed, minRatio }, center, wavelength, speed, strength }
+   • a flare layer: glowing spots (eyes) smoulder, and now and then flare up
+       { type: 'flare', spots: [{ x, y, r }], every, dur, idle, strength }
+   • a sheen layer: a soft light reflection sweeps across glass now and then
+       { type: 'sheen', poly, every, dur, angle, width, alpha }
+   • an appdemo layer: a phone screen in the art "in use" — tasks get ticked
+       (+10 XP), the XP bar fills, LEVEL UP, then it eases back to the art.
+       Everything is drawn in the screen's own tilted plane (axes).
+   config.intro { type: 'ignite', center, dur, eyes } — a procedural intro: the
+       figure starts as cold dark stone and the fire spreads out from its
+       heart through every crack; the eyes light last
    • flutter layers may carry flap: { every, dur } — then they only move in
        short bursts (an ear flap) and rest in between
    • a cards layer: playing cards drifting down one by one, tumbling; each flip
@@ -302,6 +314,7 @@
     uniform sampler2D img, keep;
     uniform vec2 size;
     uniform float t, amp, scale, speed;
+    uniform vec2 flowA, flowB;    // which way the two noise fields drift (e.g. upward for flames)
     uniform vec3 ring;            // x, y, radius (radius < 0: no ring)
     uniform vec3 ringShape;       // width, strength, glow
     varying vec2 uv;
@@ -314,8 +327,8 @@
       vec2 p = uv * size;
       vec2 q = p / scale;
       // two drifting noise fields make a lazy, swirling current
-      vec2 off = vec2(noise(q + vec2(t * speed, 0.0)) - 0.5, noise(q + vec2(5.2, t * speed * 0.8)) - 0.5);
-      off += 0.5 * vec2(noise(q * 2.3 - vec2(0.0, t * speed * 1.4)) - 0.5, noise(q * 2.3 + vec2(t * speed * 1.2, 3.7)) - 0.5);
+      vec2 off = vec2(noise(q + flowA * t * speed) - 0.5, noise(q + vec2(5.2, 0.0) + flowB * t * speed) - 0.5);
+      off += 0.5 * vec2(noise(q * 2.3 + flowB * t * speed * 1.7) - 0.5, noise(q * 2.3 + vec2(0.0, 3.7) + flowA * t * speed * 1.5) - 0.5);
       off *= amp * 2.0;
       float glow = 0.0;
       if (ring.z >= 0.0) {
@@ -362,6 +375,8 @@
     gl.uniform1i(u('img'), 0); gl.uniform1i(u('keep'), 1);
     gl.uniform2f(u('size'), W, H);
     gl.uniform1f(u('amp'), L.amp || 2.5); gl.uniform1f(u('scale'), L.scale || 260); gl.uniform1f(u('speed'), L.speed || 0.05);
+    const fl = L.flow || [[1, 0], [0, 0.8]];                     // default: a lazy sideways/down swirl (water)
+    gl.uniform2f(u('flowA'), fl[0][0], fl[0][1]); gl.uniform2f(u('flowB'), fl[1][0], fl[1][1]);
     gl.viewport(0, 0, W, H);
     L.gl = gl; L.glCanvas = c; L.uT = u('t'); L.uRing = u('ring'); L.uRingShape = u('ringShape');
     if (L.ripple) L.sched = eventTimes(L.ripple.every || [20, 30], 41);
@@ -593,6 +608,89 @@
       return { e, so, x0, y0, white, pupil, shine };
     });
     L.g = { x: 0, y: 0 };
+  }
+
+  // ---- small WebGL helper: a full-quad program with the shared vertex shader ----
+  function glQuad(w, h, fs) {
+    const c = makeCanvas(w, h), gl = c.getContext('webgl', { premultipliedAlpha: true, antialias: false });
+    if (!gl) return null;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, FLUTTER_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'pos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.viewport(0, 0, w, h);
+    const u = n => gl.getUniformLocation(prog, n);
+    const tex = (unit, source, name) => {
+      gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.uniform1i(u(name), unit);
+    };
+    return { c, gl, u, tex };
+  }
+
+  // ---- lavaflow: heat waves travelling outward through the cracks ----
+  const LAVA_FS = `
+    precision mediump float;
+    uniform sampler2D crack;
+    uniform vec2 size, origin, center;
+    uniform float t, wl, speed, strength;
+    varying vec2 uv;
+    void main(){
+      vec2 p = origin + uv * size;
+      float d = distance(p, center);
+      float band = pow(0.5 + 0.5 * sin((d / wl - t * speed) * 6.2832), 3.0);
+      float slow = 0.75 + 0.25 * sin(t * 1.3 + d * 0.004);
+      vec4 c = texture2D(crack, uv);
+      float a = c.a * strength * (0.2 * slow + band);
+      gl_FragColor = vec4(c.rgb * a, a);
+    }`;
+  function buildLava(L, img, W, H) {
+    const k = Object.assign({ minRed: 80, fullRed: 200, minRatio: 0.4, fullRatio: 0.65 }, L.key), b = boundsOf(L.mask, W, H);
+    const md = L.mask.getContext('2d').getImageData(0, 0, W, H).data;
+    L.box = b;
+    L.sprites = weightSprites(img, W, H, b, (x, y, r, g) => md[(y * W + x) * 4 + 3] / 255 *
+      smoothstep(k.minRed, k.fullRed, r) * smoothstep(k.minRatio, k.fullRatio, (r - g) / Math.max(1, r)));
+    const q = glQuad(b.w, b.h, LAVA_FS);
+    if (!q) { L.type = 'none'; return; }
+    q.tex(0, L.sprites.add, 'crack');
+    q.gl.uniform2f(q.u('size'), b.w, b.h); q.gl.uniform2f(q.u('origin'), b.x, b.y);
+    q.gl.uniform2f(q.u('center'), L.center[0], L.center[1]);
+    q.gl.uniform1f(q.u('wl'), L.wavelength || 180); q.gl.uniform1f(q.u('speed'), L.speed || 0.35); q.gl.uniform1f(q.u('strength'), L.strength || 0.8);
+    L.q = q; L.uT = q.u('t');
+  }
+
+  // ---- ignite intro: the "cold stone" version of the art (no fire anywhere) ----
+  function coldCopy(img, W, H) {
+    const c = makeCanvas(W, H), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, W, H), p = d.data;
+    for (let i = 0; i < p.length; i += 4) {
+      const r = p[i], g = p[i + 1], b = p[i + 2], l = 0.299 * r + 0.587 * g + 0.114 * b;
+      // anything lit by fire (reddish-orange, or simply bright) goes dark; the dark
+      // stone itself (brownish, unsaturated) is left as it is
+      const heat = Math.max(smoothstep(35, 120, r) * smoothstep(0.3, 0.5, (r - g) / Math.max(1, r)), smoothstep(100, 200, l));
+      // dimmed toward a deep ember red (plain dimming turns the yellow floor olive)
+      const k = 1 - 0.95 * heat;
+      p[i] = r * k + 12 * heat; p[i + 1] = g * k * (1 - 0.5 * heat) + 3 * heat; p[i + 2] = b * k * (1 - 0.5 * heat) + heat;
+    }
+    x.putImageData(d, 0, 0);
+    return c;
+  }
+
+  // ---- appdemo: helpers to draw in a tilted screen plane ----
+  function sampleBg(img, W, H, cx, cy, w, h) {
+    const s = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); s.drawImage(img, 0, 0);
+    const d = s.getImageData(Math.round(cx - w), Math.round(cy - h), Math.round(w * 2), Math.round(h * 2)).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) { const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; if (l < 70) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } }
+    return n ? `rgb(${r / n | 0},${g / n | 0},${b / n | 0})` : '#1c1c20';
   }
 
   // ---- embers: deterministic particles (same time in = same frame out) ----
@@ -870,6 +968,16 @@
         if (!buildCurrents(L, img, W, H)) L.type = 'none';          // no WebGL: stay still
       } else if (L.type === 'twinkle') {
         buildTwinkle(L, img, W, H);
+      } else if (L.type === 'lavaflow') {
+        buildLava(L, img, W, H);
+      } else if (L.type === 'flare') {
+        L.sched = eventTimes(L.every || [5, 10], 83);
+      } else if (L.type === 'sheen') {
+        L.sched = eventTimes(L.every || [6, 10], 89);
+      } else if (L.type === 'appdemo') {
+        // the art's own card colours, to paint over values that change
+        [L.xpText, L.levelText, L.remaining].forEach(e => { if (e) e.bg = sampleBg(img, W, H, e.x, e.y, e.w * 0.7, e.h * 0.9); });
+        L.checks.forEach(c => c.bg = sampleBg(img, W, H, c.x + c.r * 2.2, c.y, c.r, c.r * 0.8));
       } else if (L.type === 'bubbles' || L.type === 'blow' || L.type === 'blush') {
         // drawn fresh each frame; nothing to prepare
       } else if (L.type === 'balloon') {
@@ -965,6 +1073,14 @@
   // time: rewinding needs a server that supports range requests)
   LivingPainting.prototype.restartIntro = function () {
     const I = this.intro; if (!I) return;
+    if (I.cfg.type === 'ignite') {                           // procedural: back to cold stone
+      if (!this.cold) this.cold = coldCopy(this.img, this.W, this.H);
+      I.state = 'waiting'; I.fadeStart = null; I.start = null;
+      this.ctx.globalAlpha = 1; this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.drawImage(this.cold, 0, 0);
+      this.dirty = true;
+      return;
+    }
     if (I.v) { I.v.pause(); I.v.removeAttribute('src'); I.v.load(); }
     const lazy = I.cfg.lazy && !I.fetched;
     const v = I.v = Object.assign(document.createElement('video'),
@@ -995,33 +1111,39 @@
   // start downloading a lazy intro (call when the visitor gets near)
   LivingPainting.prototype.prefetch = function () {
     const I = this.intro;
-    if (I && I.v.preload === 'none') { I.fetched = true; I.v.preload = 'auto'; I.v.load(); }
+    if (I && I.v && I.v.preload === 'none') { I.fetched = true; I.v.preload = 'auto'; I.v.load(); }
   };
   // for poster:'art' intros — play the clip now
   LivingPainting.prototype.startIntro = function () {
     const I = this.intro;
     if (!I || I.state !== 'waiting') return;
     this.prefetch();
-    I.state = 'playing'; I.v.play().catch(() => {});
+    I.state = 'playing';
+    if (I.v) I.v.play().catch(() => {}); else I.start = performance.now();
   };
 
   LivingPainting.prototype.play = function () {
     const I = this.intro;
     if (I && (I.state === 'playing' || (I.state === 'waiting' && I.cfg.poster !== 'art'))) {   // start (or resume) the intro
+      if (!I.v) {                                            // procedural: runs on its own clock
+        if (I.state === 'waiting') { I.state = 'playing'; I.start = performance.now(); }
+        return;
+      }
       this.prefetch();
       I.state = 'playing'; I.v.play().catch(() => {});
       return;
     }
     this.startedAt = performance.now();
+    this.afterIntro = false;                                // a plain start, not straight out of an intro
     this.videos.forEach(v => { v.currentTime = 0; v.play().catch(() => {}); });   // start together, in step
   };
   LivingPainting.prototype.pause = function () {
-    if (this.intro && this.intro.state === 'playing') this.intro.v.pause();
+    if (this.intro && this.intro.state === 'playing' && this.intro.v) this.intro.v.pause();
     this.videos.forEach(v => v.pause());
   };
   LivingPainting.prototype.ready = function () {
     const I = this.intro;
-    if (I && (I.state === 'playing' || (I.state === 'waiting' && I.cfg.poster !== 'art')) && I.v.readyState < 2) return false;
+    if (I && I.v && (I.state === 'playing' || (I.state === 'waiting' && I.cfg.poster !== 'art')) && I.v.readyState < 2) return false;
     return this.videos.every(v => v.readyState >= 2) && this.images.every(i => i.complete && i.naturalWidth);
   };
 
@@ -1034,6 +1156,12 @@
 
   LivingPainting.prototype.render = function (now) {
     const I = this.intro;
+    if (I && !I.v && I.state !== 'done') {                   // procedural ignite intro
+      if (I.state === 'waiting') return this.canvas;          // cold stone, until play()
+      const e = (now - I.start) / 1000;
+      if (e >= (I.cfg.dur || 4.4)) { I.state = 'done'; this.startedAt = now; this.afterIntro = true; return this.renderLayers(now); }
+      return this.renderIgnite(e, now);
+    }
     if (I && I.state !== 'done' && !(I.state === 'waiting' && I.cfg.poster === 'art')) {
       if (I.state === 'waiting') return this.canvas;          // the void, until play()
       const v = I.v, fade = I.cfg.fade || 0.8, left = v.duration - v.currentTime;
@@ -1044,7 +1172,7 @@
       }
       if (!(left < fade)) { this.drawIntroFrame(); return this.canvas; }
       // last moments: the living painting comes up underneath and the video fades out
-      if (I.fadeStart == null) { I.fadeStart = now; this.startedAt = now; }
+      if (I.fadeStart == null) { I.fadeStart = now; this.startedAt = now; this.afterIntro = true; }   // layers can react to the intro ending
       this.renderLayers(now);
       this.drawIntroFrame(Math.max(0, Math.min(1, left / fade)));
       return this.canvas;
@@ -1080,6 +1208,14 @@
       if (L.type === 'twinkle') { this.renderTwinkle(L, t); continue; }
       if (L.type === 'bubbles') { this.renderBubbles(L, t); continue; }
       if (L.type === 'balloon') { this.renderBalloon(L, t); continue; }
+      if (L.type === 'lavaflow') {
+        L.q.gl.uniform1f(L.uT, t); L.q.gl.drawArrays(L.q.gl.TRIANGLE_STRIP, 0, 4);
+        ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(L.q.c, L.box.x, L.box.y); ctx.globalCompositeOperation = 'source-over';
+        continue;
+      }
+      if (L.type === 'flare') { this.renderFlare(L, t); continue; }
+      if (L.type === 'sheen') { this.renderSheen(L, t); continue; }
+      if (L.type === 'appdemo') { this.renderAppDemo(L, t); continue; }
       if (L.type === 'blow') { this.renderBlow(L, t); continue; }
       if (L.type === 'gaze') { this.renderGaze(L, t); continue; }
       if (L.type === 'blush') { this.renderBlush(L, t); continue; }
@@ -1274,7 +1410,11 @@
   LivingPainting.prototype.renderBalloon = function (L, t) {
     if (!L.patch) return;                                    // clean plate still loading: leave the art as is
     const ctx = this.ctx, [bx, by, bw, bh] = L.box, [px, py] = L.pivot;
-    const since = sinceEvent(L.sched, t);
+    // right after an intro (e.g. Blueey's excited hello) the balloon goes at once:
+    // inflate → pop → grow back; then the usual rhythm resumes, shifted so the
+    // next pop doesn't follow too soon
+    const kick = L.afterIntro !== false && this.afterIntro, first = L.sched.list[0];
+    const since = kick && t < 5 ? t : sinceEvent(L.sched, kick ? t + first - 0.5 : t);
     let s = 1, show = true, pop = -1;
     const T = { inflate: 1.7, tremble: 0.3, pop: 0.5, gone: 0.9, regrow: 1.3 };
     const t1 = T.inflate, t2 = t1 + T.tremble, t3 = t2 + T.pop, t4 = t3 + T.gone, t5 = t4 + T.regrow;
@@ -1365,6 +1505,192 @@
     const sy = 1 + a * k, sx = 1 + a * 0.45 * k;
     const tc = L.temp.getContext('2d'); tc.clearRect(0, 0, w, h); tc.drawImage(this.canvas, x, y, w, h, 0, 0, w, h);
     this.ctx.drawImage(L.temp, px - (px - x) * sx, py - (py - y) * sy, w * sx, h * sy);
+  };
+
+  // the ignition: a heartbeat of light in the chest, then the fire spreads out
+  // from there through every crack and into the flames around him; the eyes
+  // snap on last with a flare. Underneath, the living painting already runs.
+  LivingPainting.prototype.renderIgnite = function (e, now) {
+    const I = this.intro, cfg = I.cfg, ctx = this.ctx, W = this.W, H = this.H, [cx, cy] = cfg.center;
+    const beat = cfg.beat || 0.9, spreadEnd = cfg.spreadEnd || 3.0, eyesAt = cfg.eyesAt || 3.1;
+    this.startedAt = I.start;
+    this.renderLayers(now);
+    const maxR = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
+    const k = Math.max(0, Math.min(1, (e - beat) / (spreadEnd - beat))), R = maxR * Math.pow(k, 1.5);
+    const T = this.igniteTemp || (this.igniteTemp = makeCanvas(W, H)), tx = T.getContext('2d');
+    const ring = (inner, mid, outer, a0, a1, a2) => {      // radial alpha profile, as a mask
+      const g = tx.createRadialGradient(cx, cy, Math.max(0, inner), cx, cy, Math.max(1, outer));
+      const m = (mid - inner) / Math.max(1, outer - inner);
+      g.addColorStop(0, `rgba(0,0,0,${a0})`); g.addColorStop(Math.max(0.01, Math.min(0.99, m)), `rgba(0,0,0,${a1})`); g.addColorStop(1, `rgba(0,0,0,${a2})`);
+      tx.globalCompositeOperation = 'destination-in'; tx.fillStyle = g; tx.fillRect(0, 0, W, H); tx.globalCompositeOperation = 'source-over';
+    };
+    // cold stone wherever the fire hasn't reached yet
+    if (R < maxR) {
+      tx.clearRect(0, 0, W, H); tx.drawImage(this.cold, 0, 0);
+      ring(R - 120, R - 60, R, 0, 0.5, 1);
+      ctx.drawImage(T, 0, 0);
+    }
+    // the hot front: the cracks blaze where the fire is arriving
+    const lava = this.layers.find(l => l.type === 'lavaflow' && l.sprites);
+    if (lava && R > 0 && R < maxR) {
+      tx.clearRect(0, 0, W, H); tx.drawImage(lava.sprites.add, lava.box.x, lava.box.y);
+      ring(R - 140, R - 30, R + 10, 0, 1, 0);
+      ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(T, 0, 0); ctx.drawImage(T, 0, 0); ctx.globalCompositeOperation = 'source-over';
+    }
+    // eyes stay dark until the very end
+    const eyeOn = smoothstep(eyesAt, eyesAt + 0.12, e);
+    (cfg.eyes || []).forEach(s => {
+      if (eyeOn < 1) { ctx.save(); ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.clip(); ctx.globalAlpha = 1 - eyeOn; ctx.drawImage(this.cold, 0, 0); ctx.restore(); }
+    });
+    ctx.globalCompositeOperation = 'screen';
+    // a heartbeat in the chest (lub-dub), then a steady core while the fire spreads
+    const hb = Math.exp(-Math.pow((e - 0.2) / 0.08, 2)) + 0.75 * Math.exp(-Math.pow((e - 0.5) / 0.09, 2)) + 0.45 * k * (1 - k) * 4;
+    if (hb > 0.01) {
+      const r = 150, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, `rgba(255,200,90,${Math.min(1, hb * 0.8).toFixed(3)})`); g.addColorStop(0.4, `rgba(255,90,10,${Math.min(1, hb * 0.45).toFixed(3)})`); g.addColorStop(1, 'rgba(255,40,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+    // the eyes snap on with a flare
+    if (e >= eyesAt) {
+      const f = Math.exp(-(e - eyesAt) * 2.6);
+      (cfg.eyes || []).forEach(s => {
+        const r = s.r * 3.2, g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+        g.addColorStop(0, `rgba(255,240,170,${f.toFixed(3)})`); g.addColorStop(0.25, `rgba(255,150,40,${(f * 0.7).toFixed(3)})`); g.addColorStop(1, 'rgba(255,60,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(s.x - r, s.y - r, r * 2, r * 2);
+      });
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    return this.canvas;
+  };
+
+  // flare: glowing spots smoulder, and every few seconds blaze up (a glare)
+  LivingPainting.prototype.renderFlare = function (L, t) {
+    const ctx = this.ctx, since = sinceEvent(L.sched, t), dur = L.dur || 0.9;
+    const ev = since < dur ? Math.sin(Math.PI * since / dur) : 0;
+    const a = (L.idle == null ? 0.25 : L.idle) * (0.7 + 0.3 * vnoise(t * 1.6, 3)) + ev * (L.strength || 0.75);
+    if (a < 0.01) return;
+    ctx.globalCompositeOperation = 'screen';
+    for (const s of L.spots) {
+      const r = s.r * (1 + 0.5 * ev);
+      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+      g.addColorStop(0, `rgba(255,230,140,${Math.min(1, a).toFixed(3)})`); g.addColorStop(0.3, `rgba(255,140,30,${(Math.min(1, a) * 0.7).toFixed(3)})`); g.addColorStop(1, 'rgba(255,60,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(s.x - r, s.y - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  };
+
+  // sheen: a soft diagonal band of light glides across a glass surface
+  LivingPainting.prototype.renderSheen = function (L, t) {
+    const since = sinceEvent(L.sched, t), dur = L.dur || 1.6;
+    if (since >= dur) return;
+    const ctx = this.ctx, u = since / dur, P = L.poly;
+    const xs = P.map(p => p[0]), ys = P.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, span = Math.hypot(x1 - x0, y1 - y0);
+    ctx.save();
+    ctx.beginPath(); P.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.clip();
+    ctx.translate(cx, cy); ctx.rotate(L.angle || -0.6);
+    const pos = (u * 1.4 - 0.7) * span, w = L.width || 120, a = (L.alpha || 0.14) * Math.sin(Math.PI * u);
+    const g = ctx.createLinearGradient(pos - w, 0, pos + w, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, `rgba(255,255,255,${a.toFixed(3)})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = g; ctx.fillRect(-span, -span, span * 2, span * 2);
+    ctx.restore();
+  };
+
+  // appdemo: the phone's Today screen in use. One cycle: the day's tasks reset,
+  // get ticked one by one (+10 XP each), the XP bar rushes to full, LEVEL UP,
+  // then everything eases back to the art and rests
+  LivingPainting.prototype.renderAppDemo = function (L, t) {
+    const ctx = this.ctx, T = L.cycle || 16, u = t % T, ax = L.axes.x, ay = L.axes.y;
+    const plane = (x, y, s) => ctx.setTransform(ax[0] * s, ax[1] * s, ay[0] * s, ay[1] * s, x, y);   // draw in the screen's tilted plane
+    const ease = v => v * v * (3 - 2 * v), clamp = v => Math.max(0, Math.min(1, v));
+    const tick = L.ticks || [1.6, 3.0, 4.4], resetEnd = 0.6, fillA = 5.4, fillB = 6.8, lvl = 6.9, backA = 9.6, backB = 10.3;
+    if (u > backB) return;                                    // resting: the untouched art
+    const fade = 1 - clamp((u - backA) / (backB - backA));    // overlays ease back out at the end
+    const done = tick.filter(x => u >= x).length;
+    let xp = 5 + 10 * done;
+    if (u >= fillA) xp = Math.round(xp + (200 - xp) * ease(clamp((u - fillA) / (fillB - fillA))));
+    const leveled = u >= lvl;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    // --- the three tasks: reset to empty circles, then tick back on one by one ---
+    L.checks.forEach((c, i) => {
+      const since = u - tick[i];
+      if (since >= 0.4) return;                              // ticked and settled: the art itself shows it
+      const appear = clamp(u / resetEnd);
+      plane(c.x, c.y, c.s || 1);
+      if (since < 0) {                                       // waiting: an empty circle
+        ctx.globalAlpha = fade * appear;
+        ctx.fillStyle = c.bg; ctx.beginPath(); ctx.arc(0, 0, c.r + 4.5, 0, 6.283); ctx.fill();
+        ctx.strokeStyle = 'rgba(150,150,160,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, c.r - 1, 0, 6.283); ctx.stroke();
+      } else {                                               // the tick pops in with a bounce
+        const k = since / 0.4, sc = k < 0.6 ? ease(k / 0.6) * 1.18 : 1.18 - 0.18 * ease((k - 0.6) / 0.4);
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = c.bg; ctx.beginPath(); ctx.arc(0, 0, c.r + 4.5, 0, 6.283); ctx.fill();
+        ctx.scale(sc, sc);
+        ctx.fillStyle = '#34c759'; ctx.beginPath(); ctx.arc(0, 0, c.r, 0, 6.283); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = c.r * 0.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(-c.r * 0.38, 0); ctx.lineTo(-c.r * 0.08, c.r * 0.3); ctx.lineTo(c.r * 0.42, -c.r * 0.32); ctx.stroke();
+      }
+    });
+    // "+10 XP" floating up from each tick
+    L.checks.forEach((c, i) => {
+      const since = u - tick[i];
+      if (since < 0 || since > 1.3) return;
+      plane(c.x, c.y, c.s || 1);
+      ctx.globalAlpha = fade * (1 - clamp((since - 0.6) / 0.7));
+      ctx.font = `800 ${Math.round(c.r * 1.1)}px -apple-system, "Segoe UI", Roboto, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#ff8a2a'; ctx.fillText('+10 XP', 0, -c.r * 1.5 - since * 30);   // rises straight up from the tick
+      ctx.shadowBlur = 0;
+    });
+    ctx.globalAlpha = fade;
+    // --- the XP readout, the bar, what's left to the next level ---
+    const text = (e, str, color) => {
+      plane(e.x, e.y, e.s || 1);
+      ctx.fillStyle = e.bg; ctx.fillRect(-e.w / 2, -e.h / 2, e.w, e.h);
+      ctx.font = `${e.weight || 600} ${e.size}px -apple-system, "Segoe UI", Roboto, sans-serif`; ctx.textAlign = e.align || 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = color || e.color; ctx.fillText(str, e.align === 'left' ? -e.w / 2 + 2 : e.align === 'right' ? e.w / 2 - 2 : 0, 1);
+    };
+    if (u >= tick[0]) {
+      text(L.xpText, leveled ? '5 / 250 XP' : `${xp} / 200 XP`);
+      if (L.remaining) text(L.remaining, String(leveled ? 245 : Math.max(0, 200 - xp)));
+      // bar fill from the start of the track toward its end
+      const B = L.bar, frac = leveled ? 0.02 : xp / 200;
+      const dx = B.to[0] - B.from[0], dy = B.to[1] - B.from[1], len = Math.hypot(dx, dy);
+      ctx.setTransform(dx / len, dy / len, -dy / len, dx / len, B.from[0], B.from[1]);
+      const g = ctx.createLinearGradient(0, 0, len, 0); g.addColorStop(0, '#6d3cff'); g.addColorStop(1, '#a66bff');
+      const fw = Math.max(B.thick, len * frac), r = B.thick / 2;
+      ctx.fillStyle = g; roundRect(ctx, -r, -r, fw + r, B.thick, r); ctx.fill();
+      if (u >= fillA && !leveled) {                         // a spark riding the tip of the bar
+        const sg = ctx.createRadialGradient(fw, 0, 0, fw, 0, B.thick * 2.2);
+        sg.addColorStop(0, 'rgba(255,255,255,0.95)'); sg.addColorStop(1, 'rgba(170,120,255,0)');
+        ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = sg; ctx.fillRect(fw - B.thick * 2.2, -B.thick * 2.2, B.thick * 4.4, B.thick * 4.4); ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    // --- LEVEL UP ---
+    if (leveled) {
+      text(L.levelText, 'Level 4', L.levelText.color);
+      const since = u - lvl, B = L.bar, mx = (B.from[0] + B.to[0]) / 2, my = (B.from[1] + B.to[1]) / 2;
+      if (since < 2.4) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const fl = Math.max(0, 1 - since / 0.9), R = 60 + since * 260;
+        const rg = ctx.createRadialGradient(mx, my, 0, mx, my, R);
+        rg.addColorStop(0, `rgba(255,170,80,${(0.55 * fl).toFixed(3)})`); rg.addColorStop(0.5, `rgba(150,90,255,${(0.35 * fl).toFixed(3)})`); rg.addColorStop(1, 'rgba(120,60,255,0)');
+        ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = rg; ctx.fillRect(mx - R, my - R, R * 2, R * 2); ctx.globalCompositeOperation = 'source-over';
+        const k = clamp(since / 0.35), sc = since < 0.35 ? 0.6 + 0.6 * ease(k) : 1.2 - 0.2 * ease(clamp((since - 0.35) / 0.3));
+        plane(mx, my - 26, (L.xpText.s || 1) * sc);
+        ctx.globalAlpha = fade * (1 - clamp((since - 1.7) / 0.7));
+        // its own dark pill with a glowing orange edge, so it reads cleanly over the card
+        ctx.shadowColor = 'rgba(255,130,30,0.9)'; ctx.shadowBlur = 22;
+        ctx.fillStyle = 'rgba(16,14,20,0.94)'; roundRect(ctx, -118, -30, 236, 60, 30); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ff8a2a'; ctx.lineWidth = 2.5; roundRect(ctx, -118, -30, 236, 60, 30); ctx.stroke();
+        ctx.font = '800 32px -apple-system, "Segoe UI", Roboto, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const tg = ctx.createLinearGradient(-90, 0, 90, 0); tg.addColorStop(0, '#ff9a3a'); tg.addColorStop(1, '#b07bff');
+        ctx.fillStyle = tg; ctx.fillText('LEVEL UP!', 0, 2);
+      }
+    }
+    ctx.restore();
   };
 
   // neon: a faint electrical hum, and every few seconds a stutter (off-on-off-dim-on)
