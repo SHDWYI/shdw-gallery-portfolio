@@ -1043,8 +1043,8 @@
         L.cycle = L.pattern.reduce((s, [t]) => s + t, 0);
       } else {
         if (!videos[L.src]) {
-          videos[L.src] = Object.assign(document.createElement('video'),
-            { src: L.src, muted: true, loop: true, playsInline: true, preload: 'auto', crossOrigin: 'anonymous' });
+          videos[L.src] = Object.assign(document.createElement('video'),   // downloads only on prefetch()/play()
+            { src: L.src, muted: true, loop: true, playsInline: true, preload: 'none', crossOrigin: 'anonymous' });
         }
         L.video = videos[L.src];
         L.frame = makeCanvas(W, H);
@@ -1108,10 +1108,12 @@
     this.ctx.globalAlpha = 1;
   };
 
-  // start downloading a lazy intro (call when the visitor gets near)
+  // start downloading the videos (motion loops, a lazy intro) — call when the
+  // visitor gets near, so nothing heavy loads for paintings they never visit
   LivingPainting.prototype.prefetch = function () {
     const I = this.intro;
     if (I && I.v && I.v.preload === 'none') { I.fetched = true; I.v.preload = 'auto'; I.v.load(); }
+    this.videos.forEach(v => { if (v.preload === 'none') { v.preload = 'auto'; v.load(); } });
   };
   // for poster:'art' intros — play the clip now
   LivingPainting.prototype.startIntro = function () {
