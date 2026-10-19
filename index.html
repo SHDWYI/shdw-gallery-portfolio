@@ -154,6 +154,56 @@
   }
   #prompt.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; cursor:pointer; }
 
+  /* --- Gallery index: hamburger in the nav that teleports to a painting --- */
+  #toc{ position:relative; pointer-events:auto; }
+  #toc-btn{
+    width:36px; height:36px; cursor:pointer;
+    display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center;
+  }
+  #toc-btn span{ width:18px; height:2px; background:var(--ink); border-radius:2px; transition:background 0.2s ease; }
+  #toc-btn:hover span{ background:var(--crimson-glow); }
+  #toc-list{
+    position:absolute; right:0; top:calc(100% + 14px); min-width:250px; display:none;
+    background:rgba(10,11,17,0.72); backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:8px 0 10px;
+  }
+  #toc.open #toc-list{ display:block; }
+  .toc-label{ font-size:9px; letter-spacing:0.3em; color:var(--ink-dim); text-transform:uppercase; padding:8px 18px 10px; }
+  .toc-item{
+    padding:10px 18px; cursor:pointer; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+    color:#b9b3ac; display:flex; gap:12px; align-items:baseline; transition:all 0.15s ease;
+  }
+  .toc-item:hover{ color:var(--crimson-glow); background:rgba(255,255,255,0.04); }
+  .toc-item b{ color:var(--crimson-glow); font-weight:500; font-size:10px; flex:none; }
+
+  /* --- Jump button (touch devices only) --- */
+  #jump-btn{
+    position:fixed; right:22px; bottom:210px; width:64px; height:64px; border-radius:50%;
+    display:none; align-items:center; justify-content:center; z-index:12;
+    background:rgba(10,11,17,0.5); border:1px solid rgba(255,255,255,0.2);
+    color:var(--ink); font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+    backdrop-filter:blur(6px); touch-action:none; user-select:none;
+  }
+  body.touch #jump-btn{ display:flex; }
+  #jump-btn:active{ border-color:var(--crimson-glow); color:var(--crimson-glow); }
+
+  /* --- POV toggle button (touch devices only) --- */
+  #pov-btn{
+    position:fixed; right:22px; bottom:290px; width:64px; height:64px; border-radius:50%;
+    display:none; align-items:center; justify-content:center; z-index:12;
+    background:rgba(10,11,17,0.5); border:1px solid rgba(255,255,255,0.2);
+    color:var(--ink); font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+    backdrop-filter:blur(6px); touch-action:none; user-select:none;
+  }
+  body.touch #pov-btn{ display:flex; }
+  #pov-btn:active{ border-color:var(--crimson-glow); color:var(--crimson-glow); }
+
+  /* --- Look sensitivity slider --- */
+  #sens-row input{
+    pointer-events:auto; width:96px; accent-color:var(--crimson-glow);
+    cursor:pointer; margin-left:8px;
+  }
+
   /* --- Virtual joystick (touch devices only) --- */
   #joystick{
     position:fixed; left:22px; bottom:26px; width:124px; height:124px; z-index:12;
@@ -301,6 +351,42 @@
   .pp-gallery{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
   .pp-gallery img, .pp-gallery .pp-ph{ aspect-ratio:16/10; width:100%; object-fit:cover; border-radius:4px; border:1px solid rgba(248,220,208,0.1); }
   .pp-gbtn{ margin-top:14px; text-align:center; }
+  .pp-tile{ position:relative; cursor:zoom-in; }
+  .pp-tile img{ display:block; transition:filter 0.2s ease; }
+  .pp-tile:hover img{ filter:brightness(1.15); }
+  .pp-more{
+    position:absolute; inset:0; border-radius:4px; display:flex; align-items:center; justify-content:center;
+    background:rgba(10,10,12,0.62); color:var(--pp-blush); font-size:18px; letter-spacing:0.08em;
+  }
+  .pp-hero-main.zoomable{ cursor:zoom-in; }
+  /* portrait images (phone screenshots, character posters) show whole, letterboxed */
+  #project-page img.fit-contain{ object-fit:contain; background:var(--pp-panel); }
+  .pp-bottom.no-bts{ grid-template-columns:1.4fr 1fr; }
+
+  /* full-screen image viewer for project galleries */
+  #lightbox{
+    position:fixed; inset:0; z-index:36; display:none;
+    align-items:center; justify-content:center;
+    background:rgba(5,5,7,0.94); backdrop-filter:blur(4px);
+  }
+  #lightbox.show{ display:flex; }
+  .lb-img{
+    max-width:min(92vw, 1500px); max-height:84vh; object-fit:contain;
+    border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,0.6);
+  }
+  #lightbox button{
+    position:absolute; background:none; border:none; cursor:pointer;
+    color:#f8dcd0; font-family:'Space Grotesk',sans-serif; transition:color 0.2s ease;
+  }
+  #lightbox button:hover{ color:#fb1e44; }
+  .lb-close{ top:20px; right:26px; font-size:22px; padding:8px; }
+  .lb-prev, .lb-next{ top:50%; transform:translateY(-50%); font-size:54px; padding:18px; line-height:1; }
+  .lb-prev{ left:8px; }
+  .lb-next{ right:8px; }
+  .lb-count{
+    position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
+    font-size:11px; letter-spacing:0.24em; color:#b3a094;
+  }
 
   .pp-bottom{
     display:grid; grid-template-columns:1.25fr 1fr 1fr; gap:44px;
@@ -327,7 +413,7 @@
     .pp-side{ display:none; }
     .pp-main{ padding:26px 22px 70px; }
     .pp-header{ grid-template-columns:1fr; gap:30px; }
-    .pp-sections, .pp-bottom{ grid-template-columns:1fr; gap:34px; }
+    .pp-sections, .pp-bottom, .pp-bottom.no-bts{ grid-template-columns:1fr; gap:34px; }
   }
 
   /* --- Mock nav pages (About / Skills / Experience / Contact) --- */
@@ -430,6 +516,23 @@
   .load-hint{ text-align:center; font-size:14px; color:var(--ink-dim); animation:loadpulse 2.6s ease-in-out infinite; }
   @keyframes loadpulse{ 0%,100%{ opacity:0.4; } 50%{ opacity:1; } }
 
+  /* Blueey the guide's speech bubble (screen-projected above his head) */
+  #guide-bubble{
+    position:fixed; z-index:11; transform:translate(-50%, -115%);
+    max-width:250px; padding:10px 15px; border-radius:12px;
+    background:rgba(14,20,28,0.85); backdrop-filter:blur(6px);
+    border:1px solid rgba(94,203,233,0.55);
+    color:#dff2f8; font-size:12px; line-height:1.55; text-align:center;
+    opacity:0; transition:opacity 0.25s ease; pointer-events:none;
+  }
+  #guide-bubble.show{ opacity:1; }
+  #guide-bubble::after{
+    content:''; position:absolute; left:50%; bottom:-6px;
+    transform:translateX(-50%) rotate(45deg); width:10px; height:10px;
+    background:rgba(14,20,28,0.85);
+    border-right:1px solid rgba(94,203,233,0.55); border-bottom:1px solid rgba(94,203,233,0.55);
+  }
+
   /* now-playing toast */
   #track-toast{
     position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(8px);
@@ -454,6 +557,10 @@
     <div id="nav">
       <span data-page="about">ABOUT</span><span data-page="skills">SKILLS</span><span data-page="experience">EXPERIENCE</span>
       <span class="nav-cta" data-page="contact">CONTACT</span>
+      <div id="toc">
+        <div id="toc-btn" title="Gallery index"><span></span><span></span><span></span></div>
+        <div id="toc-list"></div>
+      </div>
     </div>
   </div>
 
@@ -462,9 +569,12 @@
     <div class="ctl-row"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span><span class="ctl-txt">Move</span></div>
     <div class="ctl-row"><span class="key wide">Shift</span><span class="ctl-txt">Run</span></div>
     <div class="ctl-row"><span class="key">🖱</span><span class="ctl-txt">Look around</span></div>
+    <div class="ctl-row"><span class="key wide">Space</span><span class="ctl-txt">Jump</span></div>
+    <div class="ctl-row"><span class="key">F</span><span class="ctl-txt">Camera view</span></div>
     <div class="ctl-row"><span class="key">E</span><span class="ctl-txt">Interact</span></div>
     <div class="ctl-row"><span class="key">N</span><span class="ctl-txt">Next song</span></div>
     <div class="ctl-row"><span class="key">M</span><span class="ctl-txt">Sound on/off</span></div>
+    <div class="ctl-row" id="sens-row"><span class="ctl-txt">Sensitivity</span><input type="range" id="sens" min="0.3" max="2" step="0.1" value="1"></div>
   </div>
 
   <div id="info-panel">
@@ -479,10 +589,22 @@
 <div id="joystick"><div id="joystick-knob"></div></div>
 
 <div id="track-toast"></div>
+<div id="guide-bubble"></div>
+
+<div id="jump-btn">Jump</div>
+<div id="pov-btn">POV</div>
 
 <!-- Full project showcase page — content is rendered from each project's
      `page` object in PROJECTS; nothing in here is hand-written per project -->
 <div id="project-page"></div>
+
+<div id="lightbox">
+  <button class="lb-close" aria-label="Close">✕</button>
+  <button class="lb-prev" aria-label="Previous">‹</button>
+  <img class="lb-img" alt="">
+  <button class="lb-next" aria-label="Next">›</button>
+  <div class="lb-count"></div>
+</div>
 
 <div id="page">
   <button id="page-close">✕&nbsp;&nbsp;Close</button>
@@ -496,99 +618,163 @@
    Vanilla Three.js, single file.
    ========================================================= */
 
-// ---------- Project data (titles from concept — swap in real content) ----------
+// ---------- Project data ----------
 // Project data sourced from https://shdwyi.framer.ai/ (May 2026).
 // `role`/`meta` are optional — panels hide those sections when absent.
 // REQUIEM and REBIRTH descriptions are placeholders (not on the site yet).
+//
+// page.links: a URL string renders a working button; '' renders a dimmed
+// "not set yet" placeholder; false hides the button (project has none).
+// page.behindScenes: same idea — [] shows "coming soon" tiles, false hides it.
+
+// Images hosted on the Framer site's CDN — FRAMER_IMG('id.png') gives the
+// original; galleries request a lighter size for thumbnails automatically.
+const FRAMER_IMG = file => 'https://framerusercontent.com/images/' + file;
+
 const PROJECTS = [
   {
-    id: 0, eyebrow: 'Game — SHXDW',
+    // Verified against https://shdwyi.framer.ai/projects/campus and the
+    // linked itch.io page (Oct 2026).
+    id: 0, eyebrow: 'Game',
     title: 'PROJECT: ABYSS',
-    subtitle: 'First-person underwater horror / exploration',
-    desc: 'A first-person underwater horror and exploration game, built end-to-end as both developer and artist. Gameplay systems are architected in Unreal Engine Blueprints and C# with an emphasis on performance and scalability, and asset creation spans the entire pipeline — concept through integration.',
+    subtitle: 'First-person underwater horror/exploration game',
+    desc: 'Delivered end-to-end contributions on Project Abyss as a multidisciplinary developer and artist, bridging gameplay engineering, visual production, and user experience.',
     role: [
-      'Architected gameplay systems in Unreal Engine (Blueprints) and C#',
-      'Modeled, sculpted and textured environments and props',
-      'UI/UX direction for the majority of in-game interfaces and iconography',
-      'Sound design and audio integration to deepen immersion'
+      'Architected and implemented gameplay systems using Unreal Engine (Blueprints) and C++, prioritizing performance, scalability, and player responsiveness.',
+      'Owned asset creation pipelines from concept to final integration — ideation, modeling, sculpting, and texturing of environment assets and props, maintaining high visual fidelity within real-time constraints.',
+      'Directed UI/UX production, creating and implementing the majority of in-game interfaces and iconography.',
+      'Enhanced game immersion through contributions to sound design and audio integration.',
+      'Played a key role in iterative development, collaborating across disciplines to refine mechanics, resolve technical challenges, and deliver a polished gameplay experience.'
     ],
-    meta: { Tools: 'Unreal Engine (Blueprints), C#', Duration: '1 year' },
-    tags: ['Game', 'Unreal Engine', 'C#'],
+    meta: { Tools: 'Unreal Engine (Blueprints), C++', Duration: '1 year', Team: 'Astralwater Interactive' },
+    tags: ['Game', 'Unreal Engine', 'C++'],
     color: 0x0e3a52, accent: 0x4fc3ff,
     art: 'assets/art/abyss.png',
     page: {
-      eyebrow: 'Featured Project',
-      role: 'Developer & Artist — full pipeline',
-      facts: ['1 Year', 'Unreal Engine', 'C#', 'Single Player'],
-      links: { trailer: '', store: '', storeLabel: 'View on itch.io' },
-      about: 'Project: Abyss is a first-person underwater horror and exploration game built end-to-end as both developer and artist. Gameplay systems are architected in Unreal Engine Blueprints and C# with an emphasis on performance and scalability.',
+      eyebrow: 'Game',
+      role: 'Multidisciplinary Developer & Artist',
+      facts: ['1 Year', 'Unreal Engine', 'Blueprints & C++', 'Team Project'],
+      links: {
+        trailer: false,   // no trailer published for this project
+        store: 'https://crazycreature.itch.io/project-abyss',
+        storeLabel: 'Play on itch.io'
+      },
+      about: 'Project: Abyss is a first-person underwater horror/exploration game developed over one year by Astralwater Interactive as a school project, and released on itch.io for Windows. My work spanned the whole production — gameplay engineering, environment and prop art, the majority of the UI, and audio — refined in close iteration with the rest of the team.',
       quote: '',
       features: [
-        { title: 'Gameplay Systems', desc: 'Architected in Unreal Engine Blueprints and C# with emphasis on performance and scalability.' },
-        { title: 'Full Asset Pipeline', desc: 'Modeling, sculpting and texturing of environments and props — concept through integration.' },
-        { title: 'UI/UX Direction', desc: 'Majority of in-game interfaces and iconography.' },
-        { title: 'Sound Design', desc: 'Audio design and integration to deepen immersion.' }
+        { icon: '⚙', title: 'Gameplay Systems', desc: 'Architected in Unreal Engine Blueprints and C++, prioritizing performance, scalability, and player responsiveness.' },
+        { icon: '◈', title: 'Asset Pipeline', desc: 'Ideation, modeling, sculpting, and texturing of environment assets and props — high fidelity within real-time constraints.' },
+        { icon: '▣', title: 'UI/UX Direction', desc: 'Created and implemented the majority of in-game interfaces and iconography.' },
+        { icon: '♫', title: 'Sound & Immersion', desc: 'Contributions to sound design and audio integration to deepen the underwater dread.' }
       ],
-      tech: ['Unreal Engine', 'Blueprints', 'C#'],
-      gallery: [], behindScenes: []
+      tech: ['Unreal Engine', 'Blueprints', 'C++'],
+      hero: FRAMER_IMG('wgBAhDFiXgdCNC1zD4uKieXX9vo.jpg'),
+      // key art, title screen, environments, then the in-game UI
+      gallery: [
+        'wgBAhDFiXgdCNC1zD4uKieXX9vo.jpg', 'TdpdDbhHtcgr9vMM6eaCtW9Laoo.png', 'iReN5E2Rrf4olC8I4PBj2vsfI.png',
+        'cPi0Wi9lEowfhGGTqfdHVZ91I.png',   'zKrBS8KkBe17yrgxwbaq0G5Y0.png',   'XXAvFKZr1FscAkKx7DHCPYsLg.png',
+        'uuoFmxNN2UO8x6Kc61YGL6p7gyw.png', 'WlCvDWbKJeeFVV4ec1EmF1JfbzQ.png', 'xg8nsSTvjegOyp9qg8h697xE3Yo.png',
+        '5PfODw1OLhGzQtXhJKw0OWBH8FI.png', 'j02yeZF1dieb1avzS8HeidVVv3I.png', 'uX2BLRSLwMjwD9g8NYsLHaFwJQ.png',
+        'uKMPOq2wPLt6s5RcGdGGRUGkG4.png',  'E1uQ7BiQ9DnjOqCs2ur18O0hdOE.png', 'kRg3im8j4ntJ7KgEU6lsq3riUM.png',
+        'uYlM9mXRtI0wfcm1zpS9PLY80h8.png', 'AlZaOlPDOjoXWRdcTj8vYIlKoc.png', 'uXsMIFGb58YdZQWaNvSEQB9noGM.png',
+        'O5PduZS3TMwgGs6pdkQk4hvGsY.png',  '7JkekfWdXzOXZBU1AQq8OzuEds.png',  'GwzGZm86ci3bMNJij8rpilhUPmE.png',
+        'UOKHD8S5dXHj9WTlpntq5x7Ao.png',   'cRuidZAiWUuRHG4HsOPhsxCMS4.png',  '476hi3iXbVvtdQWftsqw60JNgY8.png',
+        'NWhFKMzw3nDhAF5YVrQHFNk.png',     '0lKHHMX9pSpQU0yVQHIpuipNOw.png',  'vLwqeSd3axN7r0IoXJ4bOiWX8.png',
+        'tcv8pbcEM0DaFdu0vf347nKsAs.png',  'b0QwtzlsrgDvm7TlajKV32GBCA.png',  '7lhLawZcpB3jnlTlDtTz3iRB7lw.png',
+        '5J5pxeNC0BHgKdEQ53w5VmQZjhk.png', 'lqWHUbbffMqVOyumozrdK2pgOPo.png', 'F9W1ba8OOoKRB7aq468SeBsupOI.png',
+        'iTqNcAf4tUEZ03Fsv4TgfuO9ro.png',  '546i5yGSrHVFxAVqi2DIL5OKyag.png', 'EvBbvvL0i9yjHWg0xBXfvldWJ5I.png',
+        'IFTSAl8u7EZ1hOCBNhklSTWKtDA.png', 'U899Ua9l8u6i8MP3gyBRV4Yy880.png', 'bele7uzxADipWn8JhNbwnVn0rY.png',
+        'a4sMdENmzlIzLEEXjKnvs2OGZM.png'
+      ].map(FRAMER_IMG),
+      // process work: concept sketch, level layout, sculpts, the porthole from gray to textured
+      behindScenes: [
+        '4h7RMWkOAK4StQ3ztAt585uEJc.jpg', 'wnKr2JsROcS0smmu0UbHxYyV8Uo.png', '1vEyjZqHSIqdA3Rp49DbudpccQ.png',
+        'ZJ3GkV6KKhElPv0WJkpl52qpto.jpg', 'oFXAVgPzVmkEdmqNn4cIPHL7coA.jpg', 'DWNVvBqbpenJbA9zpLcsfnAKLDc.png',
+        'pdcMPHQ8KOuhtbHyzYoOTKPmjU.png', 'z8bqBLSrTC3mBQxOPcfpbS1U.png',    'aucmYJ7S2lfvQ5pqLHC83Bz76Q.png',
+        'r1SXxCsSY1ne9yyKIWVGFeYdXtQ.jpg'
+      ].map(FRAMER_IMG)
     }
   },
   {
-    id: 1, eyebrow: 'Game — SHXDW Labs',
+    // Verified against https://shdwyi.framer.ai/projects/echoes-beyond-the-dead (Oct 2026).
+    id: 1, eyebrow: 'Game',
     title: 'ECHOES BEYOND THE DEAD',
     subtitle: 'First-person zombie survival',
-    desc: 'A first-person zombie survival project focused on responsive gameplay animation and player immersion — independently developed from concept through final implementation.',
+    desc: 'A first-person zombie survival project focused on responsive gameplay animation and player immersion.',
     role: [
-      'Animation systems in Unity Animator Controller — state machines and blend trees',
-      'Keyframe animation for player movement, combat and interactions',
-      'IK rigging and root motion for realism and responsiveness',
-      'Gameplay mechanics, player controls, UI and interaction flows'
+      'Independently developed the project from concept to final implementation.',
+      'Designed and implemented gameplay animation systems using Unity Animator Controller (state machines, blend trees).',
+      'Created and integrated keyframe animations for player movement, combat, and interactions.',
+      'Applied IK rigging and root motion to improve realism and responsiveness.',
+      'Developed gameplay mechanics and player control systems to support responsive interaction.',
+      'Built and optimized real-time systems for smooth performance and transitions.',
+      'Designed UI and user interaction flows to enhance player experience.'
     ],
-    meta: { Tools: 'Unity, Animator Controller, IK rigging' },
+    meta: { Studio: 'SHXDW Labs', Tools: 'Unity (Animator Controller)' },
     tags: ['Game', 'Unity', 'Animation'],
     color: 0x241c28, accent: 0x9a86b8,
     art: 'assets/art/echoes.png',
     page: {
-      eyebrow: 'Featured Project',
-      role: 'Programmer, Gameplay Designer, UI/UX Designer',
-      facts: ['2024', 'Unity', 'C#', 'Single Player'],
-      links: { trailer: '', trailerLabel: 'Watch Trailer', store: '', storeLabel: 'View on itch.io' },
-      about: 'Echoes Beyond the Dead is a solo-developed survival horror game that combines tense combat, resource management, and story-driven exploration. The goal was to create an experience that feels unforgiving, atmospheric, and emotionally impactful.',
-      quote: "It's not just about surviving the undead, it's about facing what's left of humanity.",
+      eyebrow: 'Game',
+      role: 'Solo Developer — Animation, Gameplay & UI',
+      facts: ['SHXDW Labs', 'Unity', 'Solo Project', 'First-Person'],
+      links: {
+        trailer: 'https://youtu.be/Gg12StI9ZBc', trailerLabel: 'Watch Video',
+        store: false   // no download/store page published
+      },
+      about: 'A first-person zombie survival project focused on responsive gameplay animation and player immersion. Gameplay animation systems were developed using the Unity Animator Controller, including state machines, blend trees, and real-time character interactions — independently developed from concept to final implementation.',
+      quote: '',
       features: [
-        { title: 'Immersive Atmosphere', desc: 'Dynamic lighting, realistic sound design, and environmental storytelling.' },
-        { title: 'Tactical Gameplay', desc: 'Limited resources and intelligent enemy AI create intense, strategic encounters.' },
-        { title: 'Interactive World', desc: 'Explore a hand-crafted world filled with lore, secrets, and optional challenges.' },
-        { title: 'Custom Systems', desc: 'Built custom inventory, crafting, and AI systems in C#.' }
+        { icon: '⚙', title: 'Animation Systems', desc: 'Unity Animator Controller state machines and blend trees driving real-time character interactions.' },
+        { icon: '✦', title: 'Keyframe Animation', desc: 'Player movement, combat, and interaction animations created and integrated by hand.' },
+        { icon: '◈', title: 'IK & Root Motion', desc: 'IK rigging and root motion applied to improve realism and responsiveness.' },
+        { icon: '▣', title: 'Gameplay & UI', desc: 'Player control systems, smooth real-time transitions, and UI interaction flows.' }
       ],
-      tech: ['Unity', 'C#', 'Visual Studio', 'Blender', 'Photoshop', 'FMOD', 'Git', 'Trello'],
-      gallery: [], behindScenes: []
+      tech: ['Unity', 'Animator Controller', 'IK Rigging', 'Root Motion', 'Keyframe Animation'],
+      hero: FRAMER_IMG('Gtb1wZRGdWtbo3ybgkFqc2PZ90.png'),
+      gallery: [
+        'Gtb1wZRGdWtbo3ybgkFqc2PZ90.png', 'tBvLwGcXjC1wNhbesfsFDWo5twc.png', 'zSpMnoQjJlBeegj9gxD6r6118x8.png',
+        'EReOG1wi2aqXjpKjM1MAcJNhUA.png',  'R6iPQvpVQ2mfpl3idInvf7VqlM.png',  'Mk1O7M3tKhHbeCQGW5eKzSxA9s.png',
+        'uVp9pWSeYK5gxEVViCOlEcRQ7rE.png', 'vCi1dpPH6c2JXjrD0gEVWym1pzM.png', 'UZwF7Darc8TiRIdREwyWU93arI.png'
+      ].map(FRAMER_IMG),
+      behindScenes: false   // none published — section hidden
     }
   },
   {
-    id: 2, eyebrow: '3D Character — SHXDW',
+    // Verified against https://shdwyi.framer.ai/projects/mate (Oct 2026).
+    id: 2, eyebrow: '3D Character',
     title: 'RED SHADOW',
     subtitle: 'AI-directed character design',
     desc: 'A striking, red-haired warrior with piercing blue eyes and a regal circlet, blending elegance and resilience; his scarred nose and fur-lined cloak hint at a battle-hardened past beneath a composed, noble presence.',
     role: [
-      'Original character created with multiple AI models — visual style directed and outputs refined for a cohesive, high-quality design',
-      'Video showcase produced to highlight personality, design details and artistic vision'
+      'Created an original character using multiple AI models, directing the visual style and refining outputs to achieve a cohesive, high-quality design.',
+      'Produced a video showcasing the character, highlighting its personality, design details, and overall artistic vision.'
     ],
-    meta: { Tools: 'AI models, video production', Time: '3 hrs' },
+    meta: { Studio: 'SHXDW', Tools: 'AI models, video production', Time: '3 hrs' },
     tags: ['3D Character', 'AI Art Direction'],
     color: 0x2a2440, accent: 0xa88bff,
     art: 'assets/art/red-shadow.png',
     page: {
       eyebrow: '3D Character',
       role: 'Character Designer & Art Director',
-      facts: ['3 hrs', 'AI-directed', 'Video Showcase'],
-      links: { trailer: '', trailerLabel: 'Watch Showcase', store: '', storeLabel: 'View Project' },
+      facts: ['SHXDW', '3 Hrs', 'AI-Directed', 'Video Showcase'],
+      links: {
+        trailer: 'https://youtu.be/ClGLFq9D-gw', trailerLabel: 'Watch Showcase',
+        store: false
+      },
+      about: 'An original character created by directing multiple AI models — guiding the visual style and refining outputs into a cohesive, high-quality design — then brought to life in a showcase video highlighting his personality, design details, and overall artistic vision.',
       features: [
-        { title: 'AI Art Direction', desc: 'Original character created with multiple AI models, directing visual style and refining outputs for a cohesive, high-quality design.' },
-        { title: 'Video Showcase', desc: 'Produced a video highlighting the character’s personality, design details, and overall artistic vision.' }
+        { icon: '✦', title: 'AI Art Direction', desc: 'Multiple AI models directed and refined toward one cohesive, high-quality character design.' },
+        { icon: '▶', title: 'Video Showcase', desc: 'A video presenting the character’s personality, design details, and overall artistic vision.' }
       ],
-      tech: ['AI Models', 'Video Production'],
-      gallery: [], behindScenes: []
+      tech: ['AI Models', 'Art Direction', 'Video Production'],
+      hero: FRAMER_IMG('3QjZhR5dRUy4KDi62FYz3eW5o.png'),
+      gallery: [
+        '3QjZhR5dRUy4KDi62FYz3eW5o.png', 'H6FnalpRVuqcKfxWlK67i9Oai0w.png', 'M1oCFod426HXVDfHZt1WoebHLk.png',
+        'rVuwcAeJyaQ5UiXRws8aznIH5gk.png', 'G93B9G4kF1VTAyA0edx5drWIp0.png', 'PHFxF30zQxz0G5XnppTzgNu7Ss.png',
+        'LFVoVS3xWmCB904ae2tGN0x8hA.png',  'NFIwQJ82NArdI1MdC778z1FdI.png'
+      ].map(FRAMER_IMG),
+      behindScenes: false   // none published — section hidden
     }
   },
   {
@@ -642,62 +828,84 @@ const PROJECTS = [
     }
   },
   {
-    id: 6, eyebrow: '3D Character — SHXDW',
+    // Verified against https://shdwyi.framer.ai/projects/archizen (Oct 2026).
+    id: 6, eyebrow: '3D Character',
     title: 'BLUEEY',
     subtitle: 'Stylized ZBrush sculpt',
-    desc: 'A stylized 3D elephant crafted in ZBrush, combining appealing shape language, expressive design and a whimsical balloon prop — a clean, optimized, production-ready model suitable for real-time environments.',
+    desc: 'Blueey is a stylized 3D elephant crafted in ZBrush, combining appealing shape language, expressive design, and a whimsical balloon prop to create a memorable, production-ready character.',
     role: [
-      'Designed and sculpted in ZBrush with a focus on shape language and character appeal',
-      'Expressive features and a dynamic balloon prop to enhance personality, silhouette and visual storytelling',
-      'Balanced artistic quality with technical efficiency'
+      'Designed and sculpted Blueey, a stylized 3D elephant character, in ZBrush, delivering a polished, production-ready asset with a strong emphasis on shape language and character appeal.',
+      'Crafted expressive features and integrated a dynamic balloon prop to enhance personality, silhouette, and visual storytelling.',
+      'Balanced artistic quality with technical efficiency, producing a clean, optimized model suitable for real-time environments.'
     ],
-    meta: { Tools: 'ZBrush', Time: '3 hrs' },
+    meta: { Studio: 'SHXDW', Tools: 'ZBrush', Time: '3 hrs' },
     tags: ['3D Character', 'ZBrush'],
     color: 0x3a0e1c, accent: 0xff3b5c,
     art: 'assets/art/blueey.png',
     page: {
       eyebrow: '3D Character',
       role: '3D Character Artist',
-      facts: ['3 hrs', 'ZBrush', 'Real-time Ready'],
-      links: { trailer: '', store: '', storeLabel: 'View Project' },
+      facts: ['SHXDW', '3 Hrs', 'ZBrush', 'Real-time Ready'],
+      links: {
+        trailer: false,
+        store: '', storeLabel: 'Live Preview'   // the Framer page's Live Preview has no link yet
+      },
+      about: 'A stylized elephant sculpted in ZBrush with a strong emphasis on shape language and character appeal. Expressive features and a dynamic balloon prop give him personality and a readable silhouette, while the model stays clean and optimized for real-time environments.',
       features: [
-        { title: 'Shape Language', desc: 'Sculpted in ZBrush with a focus on appealing shape language and character appeal.' },
-        { title: 'Expressive Design', desc: 'Expressive features and a whimsical balloon prop enhance personality, silhouette, and visual storytelling.' },
-        { title: 'Optimized Model', desc: 'Balances artistic quality with technical efficiency — clean and production-ready for real-time environments.' }
+        { icon: '◈', title: 'Shape Language', desc: 'Sculpted in ZBrush with a strong emphasis on appealing shapes and character appeal.' },
+        { icon: '✦', title: 'Expressive Design', desc: 'Expressive features and a dynamic balloon prop enhance personality, silhouette, and visual storytelling.' },
+        { icon: '⚙', title: 'Optimized Model', desc: 'Artistic quality balanced with technical efficiency — clean and ready for real-time use.' }
       ],
       tech: ['ZBrush'],
-      gallery: [], behindScenes: []
+      hero: FRAMER_IMG('pEt9yLl6vgjSMHGB3neW5U.png'),
+      gallery: [
+        'pEt9yLl6vgjSMHGB3neW5U.png', 'mjQ2F3hs3Wz9UOOLafROKmqaA.png', 'F5ayswGN99NgsBLD9j35nYSOnfA.png'
+      ].map(FRAMER_IMG),
+      behindScenes: false   // none published — section hidden
     }
   },
   {
-    id: 7, eyebrow: 'App — SHXDW',
-    title: 'FORGE AI COACH',
+    // Verified against https://shdwyi.framer.ai/projects/amore (Oct 2026).
+    id: 7, eyebrow: 'App',
+    title: 'FORGE AI COACH APP',
     subtitle: 'Designed for focus. Powered by AI. Built to help you become your best self.',
-    desc: 'An AI-driven productivity app centered on habit formation and gamified engagement, built in React Native with a scalable architecture. An integrated AI coach delivers personalized guidance, feedback and motivation tied to user activity and progress.',
+    desc: 'Led the end-to-end development of an AI-driven productivity app focused on habit formation and engagement through gamified systems.',
     role: [
-      'Dynamic XP progression and responsive notification systems built from scratch',
-      'AI coaching woven directly into the user experience',
-      'Navigation architecture: Today / Workout / Coach / Habits / Profile',
-      'Game-design feedback loops and reward systems — ~30% improvement in friction reduction and feature interaction'
+      'Built core features from scratch, including a dynamic XP progression system and responsive notification system, solving real-world UI constraints such as device notches to ensure consistent visibility and polish.',
+      'Implemented an AI coaching system that provides users with personalized guidance, feedback, and motivation based on their activity and progress.',
+      'Designed and structured the app’s navigation (Today, Workout, Coach, Habits, Profile) to create a smooth, intuitive user flow aligned with user behavior.',
+      'Developed in a React Native environment with a focus on scalable architecture, clean code, and rapid iteration to resolve bugs and edge cases.',
+      'Applied game design principles like feedback loops and reward systems to drive engagement and consistency.',
+      'Result: reduced user friction and increased feature interaction by ~30% through iterative UI improvements and real-time feedback systems.'
     ],
-    meta: { Tools: 'React Native, AI integration' },
+    meta: { Studio: 'SHXDW', Tools: 'React Native, AI integration' },
     tags: ['App', 'React Native', 'AI'],
     color: 0x241418, accent: 0xe0324a,
     art: 'assets/art/forge.png',
     page: {
-      eyebrow: 'Featured App',
-      role: 'Fullstack Developer & Designer',
-      facts: ['React Native', 'AI Coaching', 'Mobile'],
-      links: { trailer: '', store: '', storeLabel: 'View Project' },
-      quote: 'Designed for focus. Powered by AI. Built to help you become your best self.',
+      eyebrow: 'App',
+      role: 'Lead Developer — Product, AI & UX',
+      facts: ['SHXDW', 'React Native', 'AI Coaching', '~30% More Interaction'],
+      links: {
+        trailer: 'https://www.youtube.com/shorts/xZ2YXHgCkec', trailerLabel: 'Watch Demo',
+        store: false
+      },
+      about: 'An AI-driven productivity app built around habit formation and gamified engagement. Its AI coach gives personalized guidance, feedback, and motivation based on the user’s activity and progress — designed to feel responsive and human-like, and woven directly into the experience rather than bolted on as a separate feature.',
+      quote: '',
       features: [
-        { title: 'XP Progression', desc: 'Dynamic XP progression and responsive notification systems built from scratch.' },
-        { title: 'AI Coaching', desc: 'Personalized guidance, feedback and motivation tied to user activity and progress.' },
-        { title: 'Structured Navigation', desc: 'Today / Workout / Coach / Habits / Profile — an architecture built for daily use.' },
-        { title: 'Gamified Engagement', desc: 'Game-design feedback loops and reward systems — ~30% improvement in friction reduction and feature interaction.' }
+        { icon: '✦', title: 'XP Progression', desc: 'A dynamic XP system and responsive notifications built from scratch — polished even around device notches.' },
+        { icon: '◈', title: 'AI Coaching', desc: 'Personalized guidance, feedback, and motivation that respond to each user’s activity and progress.' },
+        { icon: '▣', title: 'Intuitive Navigation', desc: 'Today, Workout, Coach, Habits, Profile — a flow structured around real user behavior.' },
+        { icon: '⚙', title: 'Gamified Engagement', desc: 'Feedback loops and reward systems that lifted feature interaction by ~30%.' }
       ],
-      tech: ['React Native', 'AI Integration'],
-      gallery: [], behindScenes: []
+      tech: ['React Native', 'AI Integration', 'Gamification', 'UX Design'],
+      hero: FRAMER_IMG('OhEgbRt6wRCUoMHTEGyKocCm8M.png'),
+      gallery: [
+        'OhEgbRt6wRCUoMHTEGyKocCm8M.png', 'Ry0JRHo5IHEseCEuHOUYjwMyE.png',  'HVaPOcp7V34A6Suynf8zvSZ2FY.png',
+        'jYDLkNFMc4CXxxmgJnSl1jEjAFQ.png', 'URE9qOuji7FBucc6aGuub5D7UE.png', 'zQBO6VMcqDLaeIJb00PCEv7LGM.png',
+        'Vflv0eXbv0shGmaaDNSSFzZ0.png',    'oLo6q98hHV2BHC63NtZOkYB848.png', 'PTWo37hbRz6tHfNwKrImuhZjQ.png'
+      ].map(FRAMER_IMG),
+      behindScenes: false   // none published — section hidden
     }
   }
 ];
@@ -1408,7 +1616,216 @@ function updateCharacterWisps(){
 }
 
 character.position.set(0, 0, ROOM_D/2 + 16);
+// scaled up — uniform scale keeps proportions and the feet grounded
+character.scale.setScalar(1.18);
 scene.add(character);
+
+// ============================================================
+//  BLUEEY THE GUIDE — a tiny elephant docent. He spawns beside
+//  the player, waddles from painting to painting, hops onto a
+//  pedestal, says a line about each work, and finally leaps into
+//  his own portrait. Lines, order and pacing are all editable in
+//  BLUEEY_TOUR below.
+// ============================================================
+const BLUEEY_TOUR = {
+  order: [0, 1, 2, 3, 4, 5, 7, 6],   // his own portrait (6) is the finale
+  lines: {
+    0: 'Project: Abyss — a year of underwater horror in Unreal. Systems, art, UI and sound!',
+    1: 'Echoes Beyond the Dead — zombie survival with silky animation work.',
+    2: 'Red Shadow — an AI-directed warrior with a battle-hardened past.',
+    3: 'Ren Ashveil, the Ace of Illusions — an original character concept.',
+    4: 'Requiem — a quiet drift between deep water and starlight.',
+    5: 'Rebirth — a character study forged in fire.',
+    7: 'Forge AI Coach — a mobile app with an AI coach built right in.',
+    6: 'And this one… is me! Sculpted in ZBrush. See you around!'
+  },
+  intro: "Follow me — I'll show you around the gallery!",
+  speed: 3.6,        // waddle speed, world units/sec
+  speakTime: 5,      // seconds each line stays up
+  waitRadius: 12     // how close the player must be before he speaks
+};
+
+// --- pedestals: one beside each painting ---
+const pedestalGeo = new THREE.CylinderGeometry(0.5, 0.58, 0.9, 20);
+const pedestalMat = new THREE.MeshStandardMaterial({ color: 0x1c1a20, roughness: 0.4, metalness: 0.35 });
+const pedestalTops = [];   // world position of each pedestal's top face
+paintingGroups.forEach((g, i)=>{
+  const rotY = g.rotation.y;
+  const n = new THREE.Vector3(Math.sin(rotY), 0, Math.cos(rotY));
+  const t = new THREE.Vector3(n.z, 0, -n.x);
+  const base = g.userData.worldPos.clone().addScaledVector(n, 2.4).addScaledVector(t, 2.2);
+  const ped = new THREE.Mesh(pedestalGeo, pedestalMat);
+  ped.position.set(base.x, 0.45, base.z);
+  scene.add(ped);
+  pedestalTops[i] = new THREE.Vector3(base.x, 0.9, base.z);
+});
+
+// --- the little elephant himself ---
+const blueey = new THREE.Group();
+(function buildBlueey(){
+  const blue = new THREE.MeshStandardMaterial({ color: 0x5ecbe9, roughness: 0.65 });
+  const pink = new THREE.MeshStandardMaterial({ color: 0xf29cc2, roughness: 0.6 });
+  const dark = new THREE.MeshBasicMaterial({ color: 0x101014 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 18, 14), blue);
+  body.scale.y = 0.92; body.position.y = 0.32; blueey.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), blue);
+  head.position.y = 0.74; blueey.add(head);
+  [-1, 1].forEach(s=>{
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 12), blue);
+    ear.scale.set(0.16, 1.15, 0.85);
+    ear.position.set(s*0.31, 0.8, -0.02);
+    ear.rotation.z = s * -0.25;
+    blueey.add(ear);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 10), dark);
+    eye.position.set(s*0.1, 0.78, 0.225);
+    blueey.add(eye);
+    [0.11, -0.11].forEach(z=>{
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.075, 0.2, 10), blue);
+      leg.position.set(s*0.14, 0.1, z);
+      blueey.add(leg);
+    });
+  });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 0.24, 10), blue);
+  trunk.position.set(0, 0.6, 0.25); trunk.rotation.x = 0.5; blueey.add(trunk);
+  const dropBase = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 10), pink);
+  dropBase.position.y = 1.02; blueey.add(dropBase);
+  const dropTip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 12), pink);
+  dropTip.position.y = 1.14; blueey.add(dropTip);
+})();
+blueey.position.set(1.4, 0, ROOM_D/2 + 15.2);   // right beside the player's spawn
+scene.add(blueey);
+
+// --- tour brain ---
+const guide = {
+  phase: 'idle',   // idle | intro | toSpot | hopUp | waiting | speaking | hopDown | jumpIn | done
+  step: -1, timer: 0, target: null,
+  hopFrom: null, hopTo: null, hopT: 0, hopDur: 0.5
+};
+let bubbleUntil = 0;
+function guideSay(text, secs){
+  document.getElementById('guide-bubble').textContent = text;
+  bubbleUntil = performance.now() + secs*1000;
+}
+function currentPaintingIndex(){ return BLUEEY_TOUR.order[guide.step]; }
+
+function setSpotTarget(){
+  const pt = pedestalTops[currentPaintingIndex()];
+  guide.target = new THREE.Vector3(pt.x, 0, pt.z);
+  const toPlayer = new THREE.Vector3(character.position.x - pt.x, 0, character.position.z - pt.z);
+  if(toPlayer.lengthSq() > 0.01) guide.target.addScaledVector(toPlayer.normalize(), 0.9);
+}
+function guideWalkTo(dt, target, speed){
+  const dx = target.x - blueey.position.x, dz = target.z - blueey.position.z;
+  const d = Math.hypot(dx, dz);
+  if(d < 0.15) return true;
+  const step = Math.min(d, speed*dt);
+  blueey.position.x += dx/d*step;
+  blueey.position.z += dz/d*step;
+  blueey.rotation.y = Math.atan2(dx, dz);
+  const t = performance.now()*0.012;               // waddle
+  blueey.rotation.z = Math.sin(t)*0.08;
+  blueey.position.y = Math.abs(Math.sin(t))*0.05;
+  return false;
+}
+function startHop(from, to, dur){
+  guide.hopFrom = from.clone(); guide.hopTo = to.clone(); guide.hopT = 0; guide.hopDur = dur;
+}
+function updateHop(dt, arcH){
+  guide.hopT += dt/guide.hopDur;
+  const k = Math.min(1, guide.hopT);
+  blueey.position.lerpVectors(guide.hopFrom, guide.hopTo, k);
+  blueey.position.y += Math.sin(k*Math.PI)*arcH;
+  return k >= 1;
+}
+function faceThePlayer(){
+  blueey.rotation.y = Math.atan2(character.position.x - blueey.position.x, character.position.z - blueey.position.z);
+}
+
+function updateGuide(dt){
+  if(guide.phase === 'done') return;
+  const now = performance.now();
+  switch(guide.phase){
+    case 'idle':   // wait for the player to start exploring
+      faceThePlayer();
+      if(entered && character.position.distanceTo(new THREE.Vector3(0, 0, ROOM_D/2 + 16)) > 1.2){
+        guide.phase = 'intro';
+        guideSay(BLUEEY_TOUR.intro, 3);
+        guide.timer = now + 2600;
+      }
+      break;
+    case 'intro':
+      if(now > guide.timer){ guide.step = 0; setSpotTarget(); guide.phase = 'toSpot'; }
+      break;
+    case 'toSpot':
+      if(guideWalkTo(dt, guide.target, BLUEEY_TOUR.speed)){
+        blueey.rotation.z = 0; blueey.position.y = 0;
+        startHop(blueey.position, pedestalTops[currentPaintingIndex()], 0.55);
+        guide.phase = 'hopUp';
+      }
+      break;
+    case 'hopUp':
+      if(updateHop(dt, 0.55)) guide.phase = 'waiting';
+      break;
+    case 'waiting': {
+      const pt = pedestalTops[currentPaintingIndex()];
+      blueey.position.y = pt.y + Math.sin(now*0.004)*0.03;   // idle bob on the pedestal
+      faceThePlayer();
+      if(character.position.distanceTo(pt) < BLUEEY_TOUR.waitRadius){
+        guideSay(BLUEEY_TOUR.lines[currentPaintingIndex()] || '…', BLUEEY_TOUR.speakTime);
+        guide.timer = now + BLUEEY_TOUR.speakTime*1000;
+        guide.phase = 'speaking';
+      }
+      break;
+    }
+    case 'speaking':
+      faceThePlayer();
+      if(now > guide.timer){
+        const idx = currentPaintingIndex();
+        if(idx === 6){
+          // the finale — a big leap into his own portrait
+          startHop(blueey.position, paintingGroups[6].userData.worldPos, 1.3);
+          guide.phase = 'jumpIn';
+        } else {
+          const pt = pedestalTops[idx];
+          guide.step++;
+          setSpotTarget();
+          const down = new THREE.Vector3(pt.x, 0, pt.z);
+          const dirn = guide.target.clone().sub(down);
+          if(dirn.lengthSq() > 0.01) down.addScaledVector(dirn.normalize(), 1.0);
+          startHop(blueey.position, down, 0.55);
+          guide.phase = 'hopDown';
+        }
+      }
+      break;
+    case 'hopDown':
+      if(updateHop(dt, 0.45)) guide.phase = 'toSpot';
+      break;
+    case 'jumpIn': {
+      const landed = updateHop(dt, 1.4);
+      blueey.scale.setScalar(1 - 0.85*Math.min(1, guide.hopT));   // shrink as he enters the canvas
+      if(landed){
+        blueey.visible = false;
+        guide.phase = 'done';
+        bubbleUntil = 0;
+        showToast('Blueey hopped into his portrait ✦');
+      }
+      break;
+    }
+  }
+}
+
+// speech bubble tracks Blueey's head in screen space
+function updateGuideBubble(){
+  const el = document.getElementById('guide-bubble');
+  if(!blueey.visible || performance.now() > bubbleUntil){ el.classList.remove('show'); return; }
+  const p = blueey.position.clone();
+  p.y += 1.35*blueey.scale.x + 0.25;
+  p.project(camera);
+  if(p.z > 1 || Math.abs(p.x) > 1.15 || Math.abs(p.y) > 1.15){ el.classList.remove('show'); return; }
+  el.style.left = ((p.x*0.5 + 0.5)*innerWidth) + 'px';
+  el.style.top  = ((-p.y*0.5 + 0.5)*innerHeight) + 'px';
+  el.classList.add('show');
+}
 
 // ---------- Controls ----------
 const keys = {};
@@ -1418,6 +1835,8 @@ addEventListener('keydown', e=>{
   if(e.key.toLowerCase()==='e') tryEnterPainting();
   if(e.key.toLowerCase()==='m') toggleMute();
   if(e.key.toLowerCase()==='n') nextTrack();
+  if(e.key.toLowerCase()==='f') togglePOV();
+  if(e.key === ' ') tryJump();
 });
 addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
 
@@ -1432,8 +1851,8 @@ addEventListener('pointerup', e=>{ if(e.pointerId===lookPointerId) lookPointerId
 addEventListener('pointercancel', e=>{ if(e.pointerId===lookPointerId) lookPointerId=null; });
 addEventListener('pointermove', e=>{
   if(e.pointerId !== lookPointerId) return;
-  camYaw   -= (e.clientX-lastX) * 0.006;
-  camPitch  = Math.max(-1.45, Math.min(1.45, camPitch + (e.clientY-lastY)*0.004));
+  camYaw   -= (e.clientX-lastX) * 0.006 * lookSens;
+  camPitch  = Math.max(-1.45, Math.min(1.45, camPitch + (e.clientY-lastY)*0.004*lookSens));
   lastX = e.clientX; lastY = e.clientY;
 });
 
@@ -1471,6 +1890,13 @@ let facing = Math.PI; // character yaw
 let nearestPainting = null;
 let state = 'explore'; // explore | transition-in | viewing | transition-out
 
+// ---------- Jump ----------
+let velY = 0, grounded = true;
+const GRAVITY = -24, JUMP_VEL = 8.5;
+function tryJump(){
+  if(grounded && state === 'explore' && !pageOpen){ velY = JUMP_VEL; grounded = false; }
+}
+
 const clock = new THREE.Clock();
 
 function updateMovement(dt){
@@ -1498,7 +1924,7 @@ function updateMovement(dt){
   const moving = move.lengthSq() > 0.0001;
   if(moving){
     const running = keys['shift'] || joyRun;
-    const speed = (running ? 5.8 : 3.2) * mag;
+    const speed = (running ? 7.6 : 3.2) * mag;
     move.normalize().multiplyScalar(speed*dt);
     character.position.add(move);
     const targetFacing = Math.atan2(move.x, move.z);
@@ -1506,7 +1932,7 @@ function updateMovement(dt){
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     facing += diff * Math.min(1, dt*10);
 
-    const walkT = performance.now()*(running ? 0.013 : 0.008);
+    const walkT = performance.now()*(running ? 0.016 : 0.008);
     hipL.rotation.x = Math.sin(walkT)*0.6;
     hipR.rotation.x = Math.sin(walkT+Math.PI)*0.6;
     shoulderL.rotation.x = Math.sin(walkT+Math.PI)*0.5;
@@ -1517,10 +1943,39 @@ function updateMovement(dt){
   }
   character.rotation.y = facing;
 
+  // jump physics — simple gravity arc back down to the floor
+  if(!grounded){
+    velY += GRAVITY*dt;
+    character.position.y += velY*dt;
+    if(character.position.y <= 0){ character.position.y = 0; velY = 0; grounded = true; }
+  }
+
   // open world — no boundary clamp
 }
 
+// ---------- POV toggle (third person orbit ⇄ first person eyes) ----------
+let firstPerson = false, camSnap = false;
+const FP_EYE = 2.0;   // eye height in first person (matches the head)
+function togglePOV(){
+  if(state !== 'explore' || pageOpen) return;
+  firstPerson = !firstPerson;
+  character.visible = !firstPerson;   // don't render the body you're inside of
+  camSnap = true;                     // jump the camera to its new home instantly
+}
+
 function updateCamera(dt){
+  if(firstPerson){
+    const eye = character.position.clone().add(new THREE.Vector3(0, FP_EYE, 0));
+    camera.position.copy(eye);
+    const lookDir = new THREE.Vector3(
+      -Math.sin(camYaw)*Math.cos(camPitch),
+      -Math.sin(camPitch),
+      -Math.cos(camYaw)*Math.cos(camPitch)
+    );
+    camera.lookAt(eye.clone().add(lookDir));
+    camSnap = false;
+    return;
+  }
   const target = character.position.clone().add(new THREE.Vector3(0,camHeight,0));
   const offset = new THREE.Vector3(
     Math.sin(camYaw)*Math.cos(camPitch),
@@ -1528,17 +1983,21 @@ function updateCamera(dt){
     Math.cos(camYaw)*Math.cos(camPitch)
   ).multiplyScalar(camDist);
   const desired = target.clone().add(offset);
-  camera.position.lerp(desired, Math.min(1, dt*6));
+  if(camSnap){ camera.position.copy(desired); camSnap = false; }
+  else camera.position.lerp(desired, Math.min(1, dt*6));
   camera.lookAt(target);
 }
 
 function checkProximity(){
-  let closest = null, closestDist = 6.0;
+  let closest = null, closestDist = 8.0;
+  // the character must also be roughly FACING the painting — otherwise standing
+  // between two frames (e.g. at a teleport viewing spot) can offer the wrong one
+  const fx = Math.sin(facing), fz = Math.cos(facing);
   paintingGroups.forEach(g=>{
-    const dx = character.position.x - g.userData.worldPos.x;
-    const dz = character.position.z - g.userData.worldPos.z;
+    const dx = g.userData.worldPos.x - character.position.x;
+    const dz = g.userData.worldPos.z - character.position.z;
     const d = Math.hypot(dx, dz);
-    if(d < closestDist){ closest = g; closestDist = d; }
+    if(d < closestDist && (dx/d)*fx + (dz/d)*fz > 0.35){ closest = g; closestDist = d; }
   });
   nearestPainting = closest;
   document.getElementById('prompt').classList.toggle('show', !!closest && state==='explore');
@@ -1614,27 +2073,40 @@ const PP_NAV = [
 function esc(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 function ppPh(label){ return `<div class="pp-ph">${esc(label)}</div>`; }
 
+// Framer's CDN resizes on request, so small tiles fetch a light copy while the
+// hero and lightbox get the original. Local asset paths pass through untouched.
+function imgSize(src, px){
+  return /framerusercontent\.com/.test(src) ? src.split('?')[0] + '?scale-down-to=' + px : src;
+}
+
+// image lists of the project currently on screen, for the lightbox
+let ppMedia = { gallery: [], bts: [] };
+
 function renderProjectPage(proj){
   const page = proj.page || {};
   const hero = page.hero || proj.art;
   const about = page.about || proj.desc;
   const gallery = page.gallery || [];
+  const showBts = page.behindScenes !== false;
   const bts = page.behindScenes || [];
   const features = page.features || [];
   const tech = page.tech || proj.tags || [];
   const facts = page.facts || [];
   const links = page.links || {};
+  ppMedia = { gallery, bts };
 
   const thumbs = gallery.length
-    ? gallery.slice(0,6).map((src,i)=>`<img class="pp-thumb${i===0?' on':''}" data-hero="${esc(src)}" src="${esc(src)}" alt="">`).join('')
+    ? gallery.slice(0,6).map((src,i)=>`<img class="pp-thumb${src===hero?' on':''}" data-hero="${esc(src)}" src="${esc(imgSize(src, 512))}" alt="" loading="lazy">`).join('')
     : Array.from({length:4}, ()=> ppPh('media soon')).join('');
 
+  const extra = gallery.length - 6;
   const galleryTiles = gallery.length
-    ? gallery.slice(0,6).map(src=>`<img src="${esc(src)}" alt="">`).join('')
+    ? gallery.slice(0,6).map((src,i)=>`<div class="pp-tile" data-lb="gallery" data-i="${i}"><img src="${esc(imgSize(src, 512))}" alt="" loading="lazy">${i===5 && extra > 0 ? `<span class="pp-more">+${extra}</span>` : ''}</div>`).join('')
     : Array.from({length:6}, ()=> ppPh('gallery image coming soon')).join('');
 
+  const btsExtra = bts.length - 4;
   const btsTiles = bts.length
-    ? bts.slice(0,4).map(src=>`<img src="${esc(src)}" alt="">`).join('')
+    ? bts.slice(0,4).map((src,i)=>`<div class="pp-tile" data-lb="bts" data-i="${i}"><img src="${esc(imgSize(src, 512))}" alt="" loading="lazy">${i===3 && btsExtra > 0 ? `<span class="pp-more">+${btsExtra}</span>` : ''}</div>`).join('')
     : Array.from({length:4}, ()=> ppPh('coming soon')).join('');
 
   const featureHtml = features.length
@@ -1645,9 +2117,12 @@ function renderProjectPage(proj){
         </div>`).join('')
     : `<p class="pp-note">Key features coming soon.</p>`;
 
-  // buttons render disabled until a real URL is set in page.links
-  const trailerBtn = `<a class="pp-btn${links.trailer ? '' : ' disabled'}" href="${esc(links.trailer || '#')}" target="_blank" rel="noopener">${esc(links.trailerLabel || 'Watch Trailer')} ▸</a>`;
-  const storeBtn = `<a class="pp-btn ghost${links.store ? '' : ' disabled'}" href="${esc(links.store || '#')}" target="_blank" rel="noopener">${esc(links.storeLabel || 'View Project')} ↗</a>`;
+  // a URL renders a live button, '' a dimmed placeholder, false nothing at all
+  const linkBtn = (url, label, cls) => url === false ? '' :
+    `<a class="pp-btn${cls}${url ? '' : ' disabled'}" href="${esc(url || '#')}" target="_blank" rel="noopener">${esc(label)}</a>`;
+  const trailerBtn = linkBtn(links.trailer, (links.trailerLabel || 'Watch Trailer') + ' ▸', '');
+  // with no trailer, the store link steps up to be the primary (red) action
+  const storeBtn = linkBtn(links.store, (links.storeLabel || 'View Project') + ' ↗', links.trailer === false ? '' : ' ghost');
 
   projectPageEl.innerHTML = `
   <div class="pp-layout">
@@ -1672,7 +2147,7 @@ function renderProjectPage(proj){
           <div class="pp-actions">${trailerBtn}${storeBtn}</div>
         </div>
         <div class="pp-hero">
-          <img class="pp-hero-main" src="${esc(hero)}" alt="${esc(proj.title)}">
+          <img class="pp-hero-main${gallery.length ? ' zoomable' : ''}" src="${esc(hero)}" alt="${esc(proj.title)}">
           <div class="pp-thumbs">${thumbs}</div>
         </div>
       </div>
@@ -1689,15 +2164,15 @@ function renderProjectPage(proj){
         <div>
           <div class="pp-h2">Gallery</div>
           <div class="pp-gallery">${galleryTiles}</div>
-          <div class="pp-gbtn"><span class="pp-btn ghost${gallery.length > 6 ? '' : ' disabled'}">⊞ &nbsp;View Full Gallery</span></div>
+          <div class="pp-gbtn"><span class="pp-btn ghost${gallery.length ? '' : ' disabled'}" data-lb="gallery" data-i="0">⊞ &nbsp;View Full Gallery${gallery.length ? ` (${gallery.length})` : ''}</span></div>
         </div>
       </div>
-      <div class="pp-bottom">
-        <div>
+      <div class="pp-bottom${showBts ? '' : ' no-bts'}">
+        ${showBts ? `<div>
           <div class="pp-h2">Behind the Scenes</div>
           <div class="pp-note">A look at development and process</div>
           <div class="pp-bts">${btsTiles}</div>
-        </div>
+        </div>` : ''}
         <div>
           <div class="pp-h2">My Role</div>
           <div class="pp-role-line">${esc(page.role || 'Creator')}</div>
@@ -1722,6 +2197,7 @@ function openPanel(proj){   // entry point from tryEnterPainting — name kept
 }
 
 function closeProjectPage(){
+  closeLightbox();
   projectPageEl.classList.remove('reveal');
   setTimeout(()=>{
     projectPageEl.classList.remove('show');
@@ -1731,7 +2207,38 @@ function closeProjectPage(){
   }, 300);
 }
 
-// one delegated listener covers back link, sidebar nav and hero thumbnails
+// ---------- Lightbox — full-screen viewer for gallery / behind-the-scenes ----------
+const lbEl = document.getElementById('lightbox');
+const lbImg = lbEl.querySelector('.lb-img');
+let lbList = [], lbIdx = 0;
+function lbShow(){
+  lbImg.src = lbList[lbIdx];
+  lbEl.querySelector('.lb-count').textContent = (lbIdx + 1) + ' / ' + lbList.length;
+  // preload the neighbours so arrowing through feels instant
+  [lbIdx + 1, lbIdx - 1].forEach(i => { if(lbList[i]) new Image().src = lbList[i]; });
+}
+function openLightbox(list, idx){
+  if(!list || !list.length) return;
+  lbList = list; lbIdx = Math.max(0, Math.min(idx, list.length - 1));
+  lbShow();
+  lbEl.classList.add('show');
+}
+function closeLightbox(){ lbEl.classList.remove('show'); lbImg.removeAttribute('src'); }
+function lbStep(d){ lbIdx = (lbIdx + d + lbList.length) % lbList.length; lbShow(); }
+lbEl.addEventListener('click', e=>{
+  if(e.target.closest('.lb-prev')) lbStep(-1);
+  else if(e.target.closest('.lb-next')) lbStep(1);
+  else if(!e.target.closest('.lb-img')) closeLightbox();   // backdrop or ✕
+});
+
+// tall images would be cropped to a sliver by the landscape slots — fit them whole
+projectPageEl.addEventListener('load', e=>{
+  const img = e.target;
+  if(img.tagName === 'IMG' && img.naturalWidth)
+    img.classList.toggle('fit-contain', img.naturalWidth / img.naturalHeight < 1.2);
+}, true);
+
+// one delegated listener covers back link, sidebar nav, thumbnails and the lightbox triggers
 projectPageEl.addEventListener('click', e=>{
   const thumb = e.target.closest('.pp-thumb');
   if(thumb){
@@ -1740,13 +2247,30 @@ projectPageEl.addEventListener('click', e=>{
     thumb.classList.add('on');
     return;
   }
+  const lb = e.target.closest('[data-lb]');
+  if(lb){ openLightbox(ppMedia[lb.dataset.lb], +lb.dataset.i); return; }
+  const heroImg = e.target.closest('.pp-hero-main.zoomable');
+  if(heroImg){
+    const i = ppMedia.gallery.indexOf(heroImg.getAttribute('src'));
+    openLightbox(ppMedia.gallery, i < 0 ? 0 : i);
+    return;
+  }
   const t = e.target.closest('[data-action]');
   if(!t) return;
   if(t.dataset.action === 'close') closeProjectPage();
   else if(t.dataset.action === 'page'){ closeProjectPage(); openPage(t.dataset.target); }
 });
 
-addEventListener('keydown', e=>{ if(e.key === 'Escape' && state === 'viewing') closeProjectPage(); });
+addEventListener('keydown', e=>{
+  if(state !== 'viewing') return;
+  if(lbEl.classList.contains('show')){
+    if(e.key === 'Escape') closeLightbox();          // Esc closes the viewer, not the page
+    else if(e.key === 'ArrowRight') lbStep(1);
+    else if(e.key === 'ArrowLeft') lbStep(-1);
+    return;
+  }
+  if(e.key === 'Escape') closeProjectPage();
+});
 
 // ---------- Mock nav pages (About / Skills / Experience / Contact) ----------
 const PAGES = {
@@ -1883,6 +2407,75 @@ if(IS_TOUCH){
   document.getElementById('info-panel').appendChild(nextBtn);
 }
 
+// ---------- Look sensitivity (slider in the controls panel; remembered) ----------
+let lookSens = parseFloat(localStorage.getItem('shdwyi-sens') || '1') || 1;
+const sensInput = document.getElementById('sens');
+sensInput.value = lookSens;
+sensInput.addEventListener('input', ()=>{
+  lookSens = parseFloat(sensInput.value);
+  localStorage.setItem('shdwyi-sens', String(lookSens));
+});
+if(IS_TOUCH){
+  // the controls panel is hidden on touch — the slider lives in the info panel there
+  document.getElementById('info-panel').appendChild(document.getElementById('sens-row'));
+  // and the on-screen jump button stands in for the space bar
+  document.getElementById('jump-btn').addEventListener('pointerdown', ()=> tryJump());
+  document.getElementById('pov-btn').addEventListener('pointerdown', ()=> togglePOV());
+}
+
+// ---------- Gallery index: hamburger dropdown → teleport to a painting ----------
+const tocEl = document.getElementById('toc');
+const tocList = document.getElementById('toc-list');
+tocList.innerHTML = '<div class="toc-label">Gallery Index</div>' + PROJECTS.map((p,i)=>
+  `<div class="toc-item" data-i="${i}"><b>${String(i+1).padStart(2,'0')}</b>${esc(p.title)}</div>`).join('');
+document.getElementById('toc-btn').addEventListener('click', ()=> tocEl.classList.toggle('open'));
+document.addEventListener('click', e=>{ if(!tocEl.contains(e.target)) tocEl.classList.remove('open'); });
+tocList.addEventListener('click', e=>{
+  const item = e.target.closest('.toc-item');
+  if(!item) return;
+  tocEl.classList.remove('open');
+  teleportToPainting(+item.dataset.i);
+});
+
+// Blink the character to a spot in front of the chosen painting. Distance and
+// gaze angle were measured from a hand-picked viewing spot: 16.75 units back,
+// eyes tilted slightly up — the full frame with breathing room around it.
+const TELEPORT_DIST = 16.75;
+const TELEPORT_PITCH = -0.224;   // negative = gazing up at the frame
+function teleportToPainting(i){
+  if(state !== 'explore' || pageOpen) return;
+  const g = paintingGroups[i];
+  const rotY = g.rotation.y;
+  const normal = new THREE.Vector3(Math.sin(rotY), 0, Math.cos(rotY)); // painting's facing direction
+  const pos = g.userData.worldPos.clone().addScaledVector(normal, TELEPORT_DIST);
+  const fade = document.getElementById('fade');
+  fade.classList.add('on');
+  setTimeout(()=>{
+    character.position.set(pos.x, 0, pos.z);
+    velY = 0; grounded = true;                       // cancel any mid-air jump
+    facing = Math.atan2(-normal.x, -normal.z);       // character faces the painting
+    character.rotation.y = facing;
+    camYaw = Math.atan2(normal.x, normal.z);         // camera settles behind the character
+    camPitch = TELEPORT_PITCH;
+    const target = character.position.clone().add(new THREE.Vector3(0, camHeight, 0));
+    const offset = new THREE.Vector3(
+      Math.sin(camYaw)*Math.cos(camPitch), Math.sin(camPitch), Math.cos(camYaw)*Math.cos(camPitch)
+    ).multiplyScalar(camDist);
+    camera.position.copy(target).add(offset);        // snap — no cross-room sweep
+    camera.lookAt(target);
+    // first teleport of the visit: drop into first person for the full effect,
+    // with a hint (same toast as the music) on how to switch back
+    if(!povHintShown){
+      povHintShown = true;
+      if(!firstPerson) togglePOV();
+      showToast(IS_TOUCH ? 'First person — tap POV to switch back'
+                         : 'First person — press F to switch back to third person');
+    }
+    fade.classList.remove('on');
+  }, 180);
+}
+let povHintShown = false;
+
 // ---------- Collapsible HUD panels (click the label; choice is remembered) ----------
 document.querySelectorAll('#controls-panel, #info-panel').forEach(p=>{
   const key = 'shdwyi-collapse-' + p.id;
@@ -1920,7 +2513,9 @@ function animate(){
     updateMovement(dt);
     updateCamera(dt);
     checkProximity();
+    updateGuide(dt);          // Blueey's tour pauses whenever an overlay is open
   }
+  updateGuideBubble();        // bubble position must track every rendered frame
   renderer.render(scene, camera);
 }
 
@@ -2032,16 +2627,17 @@ function toggleMute(){
 }
 if(muteBtn) muteBtn.addEventListener('click', toggleMute);
 
-// transient toast naming the song that just started
+// transient toast — shared by music changes and gameplay hints
 let toastTimer = null;
-function showTrackToast(){
+function showToast(msg){
   const t = document.getElementById('track-toast');
   if(!t) return;
-  t.textContent = '♪ ' + MUSIC.playlist[trackIndex].title;
+  t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> t.classList.remove('show'), 3200);
 }
+function showTrackToast(){ showToast('♪ ' + MUSIC.playlist[trackIndex].title); }
 
 // ---------- Entry gate (dismisses the loader AND unlocks browser audio) ----------
 let entered = false;
