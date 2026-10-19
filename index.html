@@ -629,7 +629,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=10"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=11"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -980,8 +980,7 @@ const PROJECTS = [
     art: 'assets/art/blueey.png',
     // living painting: he blinks, his eyes follow you (or the Blueey guide), his
     // ears flap now and then, he breathes, his balloon bobs — and every so often
-    // inflates and POPS, then grows back — he blows new balloons (some hearts)
-    // that float up and pop, and he blushes when you come close. The first time
+    // inflates and POPS, then grows back — and he blushes when you come close. The first time
     // you walk up (each page load, or jumping here from the index) he says hello.
     animated: {
       intro: { src: 'assets/projects/blueey/animated/blueey-hello.mp4', fit: { x: 1, y: -99, scale: 0.921 },
@@ -993,9 +992,10 @@ const PROJECTS = [
           areas: [{ poly: [[700,520],[860,480],[895,600],[880,860],[800,975],[690,960],[680,700]], feather: 14 }] },
         { type: 'balloon', box: [425, 215, 285, 455], pivot: [578, 655], every: [12, 18],
           clean: { src: 'assets/projects/blueey/animated/blueey-no-balloon.jpg', fit: { x: 360, y: 210, scale: 0.459 } } },
-        { type: 'blow', from: [552, 860], every: 7, life: 6 },
-        { type: 'gaze', shift: 10, pupilShift: 0,
-          eyes: [{ x: 419, y: 784, r: 52, socket: 58 }, { x: 660, y: 777, r: 43, socket: 49 }] },
+        // eyes look at you: the pupils move within the whites (and converge a little when you're close)
+        { type: 'gaze', pupilShift: 7, shift: 4, converge: 0.35,
+          eyes: [{ x: 418.5, y: 782.5, rx: 52, ry: 52.5, socket: { x: 415.5, y: 792.5, rx: 59.5, ry: 61.5 } },
+                 { x: 660.5, y: 777, rx: 41.5, ry: 50, socket: { x: 660, y: 784.5, rx: 45, ry: 60.5 } }] },
         { type: 'blink', src: 'assets/projects/blueey/animated/blueey-eyes-closed.jpg', fit: { x: 310, y: 600, scale: 0.4297 },
           every: [3.5, 7], areas: [[348, 712, 140, 150], [598, 708, 124, 145]].map(b => Object.assign(b, { feather: 6 })),
           eyes: [{ x: 355, y: 722, w: 125, h: 130 }, { x: 605, y: 718, w: 110, h: 125 }] },

@@ -554,33 +554,43 @@
     c.src = L.clean.src;
     done(c);
   }
-  // eye-shine sprites and "shine removed" eye crops for the gaze layer
+  // the eyes as movable parts: the whites (socket, with the pupil filled in from
+  // the white around it), the pupil (with its shine erased) and the shine itself.
+  // Pupil and socket are ellipses { x, y, rx, ry } in still pixels.
   function buildGaze(L, img, W, H) {
     const s = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); s.drawImage(img, 0, 0);
+    const inside = (x, y, e, k = 1) => Math.pow((x - e.x) / (e.rx * k), 2) + Math.pow((y - e.y) / (e.ry * k), 2) < 1;
     L.eyeParts = L.eyes.map(e => {
-      const R = e.socket || e.r * 1.2, x0 = Math.round(e.x - R), y0 = Math.round(e.y - R), S = Math.round(R * 2);
-      const d = s.getImageData(x0, y0, S, S), p = d.data;
-      const cover = makeCanvas(S, S), shine = makeCanvas(S, S);
-      const cd = cover.getContext('2d').createImageData(S, S), hd = shine.getContext('2d').createImageData(S, S);
-      // shine = anything lighter than the black pupil; erase it (and a 3px margin
-      // around it, where its soft edge is) from the pupil before moving it
-      const K = new Float32Array(S * S);
-      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4, inPupil = Math.hypot(x0 + x - e.x, y0 + y - e.y) < e.r * 0.86;   // (clear of the pupil's soft rim)
-        K[y * S + x] = inPupil ? smoothstep(10, 45, 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) : 0;
-      }
-      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4, inPupil = Math.hypot(x0 + x - e.x, y0 + y - e.y) < e.r * 0.95;
+      const so = e.socket, x0 = Math.floor(so.x - so.rx - 2), y0 = Math.floor(so.y - so.ry - 2);
+      const SW = Math.ceil(so.rx * 2 + 4), SH = Math.ceil(so.ry * 2 + 4);
+      const p = s.getImageData(x0, y0, SW, SH).data, n = SW * SH;
+      const lum = i => 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+      // 1) shine = anything lighter than the black, well inside the pupil
+      const K = new Float32Array(n);
+      for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) K[y * SW + x] = inside(x0 + x, y0 + y, e, 0.86) ? smoothstep(10, 45, lum((y * SW + x) * 4)) : 0;
+      // 2) the pupil without its shine (shine + a 3px margin painted black), soft-edged
+      const pupil = makeCanvas(SW, SH), shine = makeCanvas(SW, SH);
+      const pd = pupil.getContext('2d').createImageData(SW, SH), hd = shine.getContext('2d').createImageData(SW, SH);
+      for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+        const i = (y * SW + x) * 4, X = x0 + x, Y = y0 + y;
         let kk = 0;
-        if (inPupil) for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
-          const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < S && yy < S) kk = Math.max(kk, K[yy * S + xx]);
-        }
-        cd.data[i] = p[i] * (1 - kk) + 6 * kk; cd.data[i + 1] = p[i + 1] * (1 - kk) + 6 * kk; cd.data[i + 2] = p[i + 2] * (1 - kk) + 8 * kk; cd.data[i + 3] = 255;
-        const k = K[y * S + x];
-        hd.data[i] = p[i]; hd.data[i + 1] = p[i + 1]; hd.data[i + 2] = p[i + 2]; hd.data[i + 3] = 255 * k;
+        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < SW && yy < SH) kk = Math.max(kk, K[yy * SW + xx]); }
+        const dn = Math.sqrt(Math.pow((X - e.x) / e.rx, 2) + Math.pow((Y - e.y) / e.ry, 2));
+        const edge = 1 - smoothstep(0.96, 1.03, dn);                     // soft rim
+        pd.data[i] = p[i] * (1 - kk) + 6 * kk; pd.data[i + 1] = p[i + 1] * (1 - kk) + 6 * kk; pd.data[i + 2] = p[i + 2] * (1 - kk) + 8 * kk; pd.data[i + 3] = 255 * edge;
+        hd.data[i] = p[i]; hd.data[i + 1] = p[i + 1]; hd.data[i + 2] = p[i + 2]; hd.data[i + 3] = 255 * K[y * SW + x];
       }
-      cover.getContext('2d').putImageData(cd, 0, 0); shine.getContext('2d').putImageData(hd, 0, 0);
-      return { e, R, x0, y0, cover, shine };
+      pupil.getContext('2d').putImageData(pd, 0, 0); shine.getContext('2d').putImageData(hd, 0, 0);
+      // 3) the whites with the pupil filled in from the white around it
+      const known = new Float32Array(n);
+      for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+        const X = x0 + x, Y = y0 + y;
+        known[y * SW + x] = inside(X, Y, so, 0.97) && !inside(X, Y, e, 1.08) && lum((y * SW + x) * 4) > 70 ? 1 : 0;
+      }
+      const f = pullPush(p, known, SW, SH), white = makeCanvas(SW, SH), wd = white.getContext('2d').createImageData(SW, SH);
+      for (let i = 0; i < n * 4; i += 4) { wd.data[i] = known[i / 4] ? p[i] : f[i]; wd.data[i + 1] = known[i / 4] ? p[i + 1] : f[i + 1]; wd.data[i + 2] = known[i / 4] ? p[i + 2] : f[i + 2]; wd.data[i + 3] = 255; }
+      white.getContext('2d').putImageData(wd, 0, 0);
+      return { e, so, x0, y0, white, pupil, shine };
     });
     L.g = { x: 0, y: 0 };
   }
@@ -1318,17 +1328,21 @@
     const ctx = this.ctx, target = this.gaze || { x: 0, y: 0 }, g = L.g;
     g.x += (Math.max(-1, Math.min(1, target.x)) - g.x) * 0.12;   // eased, so it glides
     g.y += (Math.max(-1, Math.min(1, target.y)) - g.y) * 0.12;
-    const ps = L.pupilShift || 0, hs = L.shift || 8;
-    for (const P of L.eyeParts) {
-      const { e, R, x0, y0 } = P;
-      ctx.save(); ctx.beginPath(); ctx.arc(e.x, e.y, ps ? R - 1 : e.r * 0.97, 0, 6.283); ctx.clip();
-      if (ps) ctx.drawImage(this.img, x0, y0, R * 2, R * 2, x0, y0, R * 2, R * 2);   // (clean socket under a shifted pupil)
-      ctx.drawImage(P.cover, x0 + g.x * ps, y0 + g.y * ps);                          // the pupil without its shine
+    // pupils move toward the viewer inside the whites; when the viewer is close the
+    // two eyes also turn in a little (they focus on you); the shine moves less
+    // than the pupil (it's a reflection of a fixed light)
+    const ps = L.pupilShift || 6, hs = L.shift || ps * 0.5, conv = (L.converge || 0) * Math.max(0, Math.min(1, this.proximity || 0));
+    L.eyeParts.forEach((P, idx) => {
+      const { e, so, x0, y0 } = P, side = idx === 0 ? 1 : -1;
+      const k = e.rx / 52;                                       // the farther (narrower) eye moves less
+      const dx = (g.x + conv * side) * ps * k, dy = g.y * ps;
+      ctx.save(); ctx.beginPath(); ctx.ellipse(so.x, so.y, so.rx - 0.5, so.ry - 0.5, 0, 0, 6.283); ctx.clip();
+      ctx.drawImage(P.white, x0, y0);                            // the whites, no pupil
+      ctx.drawImage(P.pupil, x0 + dx, y0 + dy);                  // the pupil, moved
+      ctx.beginPath(); ctx.ellipse(e.x + dx, e.y + dy, e.rx * 0.95, e.ry * 0.95, 0, 0, 6.283); ctx.clip();
+      ctx.drawImage(P.shine, x0 + dx * hs / ps, y0 + dy * hs / ps);
       ctx.restore();
-      ctx.save(); ctx.beginPath(); ctx.arc(e.x + g.x * ps, e.y + g.y * ps, e.r * 0.95, 0, 6.283); ctx.clip();
-      ctx.drawImage(P.shine, x0 + g.x * hs, y0 + g.y * hs);
-      ctx.restore();
-    }
+    });
   };
 
   // cheeks: a soft pink glow that rises as you come close
