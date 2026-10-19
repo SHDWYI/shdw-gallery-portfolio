@@ -813,10 +813,17 @@ const PROJECTS = [
     // is an AI edit), so every other pixel stays the original.
     animated: {
       layers: [
-        { type: 'sway', amp: 2.2, wavelength: 90, speed: 0.3,
-          areas: [{ poly: [[20,875],[300,855],[372,960],[372,1300],[300,1465],[20,1465]], feather: 30 },
-                  { poly: [[805,660],[1003,560],[1003,1310],[870,1310],[805,1060]], feather: 30 }],
+        // feathers bend from the shoulder: still at the root, fluttering at the tips
+        { type: 'flutter', anchor: [410, 1090], reach: 300, amp: 6, wavelength: 130, speed: 0.32,
+          areas: [{ poly: [[0,860],[300,840],[380,960],[380,1310],[300,1480],[0,1480]], feather: 30 }] },
+        { type: 'flutter', anchor: [730, 960], reach: 240, amp: 5, wavelength: 120, speed: 0.28,
+          areas: [{ poly: [[805,640],[1003,540],[1003,1320],[870,1320],[805,1060]], feather: 30 }],
           exclude: [{ poly: [[715,815],[975,815],[975,1055],[715,1055]], feather: 12 }] },   // the gold brooch stays put
+        // sparks drifting up through the air on both sides (never over his face)
+        { type: 'embers', count: 48, rise: [16, 40], size: [2, 4.5], life: [3, 7],
+          areas: [{ poly: [[0,0],[230,0],[160,330],[110,640],[250,800],[330,1569],[0,1569]], feather: 24 },
+                  { poly: [[800,0],[1003,0],[1003,1569],[930,1569],[900,700],[860,420]], feather: 24 }],
+          exclude: [{ poly: [[280,360],[720,360],[720,820],[280,820]], feather: 30 }] },
         { type: 'glow', strength: 0.55, speed: 0.9,
           areas: [{ poly: [[40,0],[960,0],[930,420],[880,640],[700,640],[640,330],[300,460],[300,760],[180,800],[40,640]], feather: 30 }],
           exclude: [{ poly: [[318,370],[425,370],[425,500],[318,500]], feather: 10 }],

@@ -24,6 +24,14 @@
                twinkling on its own
    • a sway layer: a slow, sub-pixel ripple (feathers in a faint breeze)
        { type: 'sway', areas, amp, wavelength, speed }
+   • a flutter layer: feathers bending in a breeze (WebGL warp; sway fallback)
+       { type: 'flutter', areas, anchor: [x, y], reach, amp, wavelength, speed }
+       anchor = where the feathers are rooted: nothing moves there, and the
+       motion grows toward the tips (full amp at `reach` px away)
+   • an embers layer: glowing sparks drifting up through the air
+       { type: 'embers', areas, exclude?, count, rise: [min, max] px/s,
+         size: [min, max], life: [min, max] s }
+       sparks are born inside `areas` and only ever drawn inside them
    • a blink layer: a closed-eyes version of the face, wiped down like eyelids
        { type: 'blink', src, fit, eyes: [{ x, y, w, h }], areas, every: [min, max] }
    • a tear layer: a glassy droplet that wells up and creeps down a path
@@ -178,6 +186,87 @@
     return out.sort((a, b) => b.c - a.c).slice(0, max);
   }
 
+  // ---- flutter: a tiny WebGL warp of one region (the GPU does the per-pixel work) ----
+  const FLUTTER_FS = `
+    precision mediump float;
+    uniform sampler2D img, msk;
+    uniform vec2 size, origin, anchor;
+    uniform float reach, amp, wl, t, speed;
+    varying vec2 uv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+    }
+    void main(){
+      vec2 p = origin + uv * size;                       // still pixels
+      vec2 r = p - anchor; float d = length(r);
+      vec2 dir = r / max(d, 1.0), perp = vec2(-dir.y, dir.x);
+      float w = smoothstep(0.0, reach, d); w *= w;       // rooted at the anchor, free at the tips
+      float gust = 0.55 + 0.45 * noise(vec2(t * 0.35, 3.1));
+      float bend = sin((d / wl - t * speed) * 6.2832 + noise(p / (wl * 1.6) + t * 0.25) * 2.5);
+      float flick = noise(p / (wl * 0.45) - vec2(t * speed * 1.7, t * 0.4)) * 2.0 - 1.0;
+      vec2 off = amp * w * gust * (perp * (0.75 * bend + 0.45 * flick) + dir * 0.2 * flick);
+      vec3 c = texture2D(img, (p - off - origin) / size).rgb;
+      float m = texture2D(msk, uv).a;
+      gl_FragColor = vec4(c * m, m);
+    }`;
+  const FLUTTER_VS = 'attribute vec2 pos; varying vec2 uv; void main(){ uv = vec2(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5); gl_Position = vec4(pos, 0.0, 1.0); }';
+
+  function buildFlutter(L, img) {
+    const b = L.box, c = makeCanvas(b.w, b.h);
+    const gl = c.getContext('webgl', { premultipliedAlpha: true, antialias: false });
+    if (!gl) return false;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, FLUTTER_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FLUTTER_FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'pos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const tex = (unit, source) => {
+      gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    };
+    const crop = makeCanvas(b.w, b.h); crop.getContext('2d').drawImage(img, -b.x, -b.y);
+    tex(0, crop); tex(1, L.boxMask);
+    const u = n => gl.getUniformLocation(prog, n);
+    gl.uniform1i(u('img'), 0); gl.uniform1i(u('msk'), 1);
+    gl.uniform2f(u('size'), b.w, b.h); gl.uniform2f(u('origin'), b.x, b.y);
+    gl.uniform2f(u('anchor'), L.anchor[0], L.anchor[1]);
+    gl.uniform1f(u('reach'), L.reach || 250); gl.uniform1f(u('amp'), L.amp || 5);
+    gl.uniform1f(u('wl'), L.wavelength || 120); gl.uniform1f(u('speed'), L.speed || 0.35);
+    gl.viewport(0, 0, b.w, b.h);
+    L.gl = gl; L.glCanvas = c; L.uT = u('t');
+    return true;
+  }
+
+  // ---- embers: deterministic particles (same time in = same frame out) ----
+  function buildEmbers(L, W, H) {
+    // candidate birth points inside the areas
+    const d = L.mask.getContext('2d').getImageData(0, 0, W, H).data, spots = [];
+    for (let y = 0; y < H; y += 6) for (let x = 0; x < W; x += 6) if (d[(y * W + x) * 4 + 3] > 200) spots.push([x, y]);
+    L.spots = spots;
+    const r = (i, k, lo, hi) => lo + (hi - lo) * (hash(i * 13.7 + k * 3.1) * 0.5 + 0.5);
+    const [r0, r1] = L.rise || [14, 34], [s0, s1] = L.size || [1.2, 3], [l0, l1] = L.life || [3, 7];
+    L.parts = Array.from({ length: L.count || 36 }, (_, i) => ({
+      i, rise: r(i, 1, r0, r1), size: r(i, 2, s0, s1), life: r(i, 3, l0, l1), gap: r(i, 4, 0.2, 2.5),
+      sway: r(i, 5, 4, 14), freq: r(i, 6, 0.25, 0.7), drift: r(i, 7, -6, 6), offset: r(i, 8, 0, 20), hue: r(i, 9, 0, 1)
+    }));
+    // a soft glowing spark sprite (hot core, orange body, red halo)
+    const S = 32, sp = makeCanvas(S, S), g = sp.getContext('2d');
+    const grad = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    grad.addColorStop(0, 'rgba(255,240,200,1)'); grad.addColorStop(0.18, 'rgba(255,170,70,0.95)');
+    grad.addColorStop(0.45, 'rgba(235,70,20,0.35)'); grad.addColorStop(1, 'rgba(200,20,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, S, S);
+    L.sprite = sp;
+    L.layer = makeCanvas(W, H);
+  }
+
   // ---- blink: when (seconds) each blink starts — irregular, like a person ----
   function blinkTimes(every, n = 64) {
     const t = []; let at = every[0] * 0.6;
@@ -226,10 +315,13 @@
       }
       if (L.type === 'glow') {
         buildGlow(L, img, W, H);
-      } else if (L.type === 'sway') {
+      } else if (L.type === 'embers') {
+        buildEmbers(L, W, H);
+      } else if (L.type === 'sway' || L.type === 'flutter') {
         const b = boundsOf(L.mask, W, H);
         L.box = b; L.rows = makeCanvas(b.w, b.h); L.cols = makeCanvas(b.w, b.h);
         L.boxMask = makeCanvas(b.w, b.h); L.boxMask.getContext('2d').drawImage(L.mask, -b.x, -b.y);
+        if (L.type === 'flutter' && !buildFlutter(L, img)) { L.type = 'sway'; L.amp = (L.amp || 5) * 0.5; }   // no WebGL
       } else if (L.type === 'blink') {
         L.schedule = blinkTimes(L.every || [4, 8]);
         L.closed = Object.assign(new Image(), { crossOrigin: 'anonymous' });
@@ -297,6 +389,12 @@
     for (const L of this.layers) {
       if (L.type === 'glow') { this.renderGlow(L, t); continue; }
       if (L.type === 'sway') { this.renderSway(L, t); continue; }
+      if (L.type === 'flutter') {
+        L.gl.uniform1f(L.uT, t); L.gl.drawArrays(L.gl.TRIANGLE_STRIP, 0, 4);
+        ctx.drawImage(L.glCanvas, L.box.x, L.box.y);
+        continue;
+      }
+      if (L.type === 'embers') { this.renderEmbers(L, t); continue; }
       if (L.type === 'blink') { this.renderBlink(L, t); continue; }
       if (L.type === 'tear') { this.renderTear(L, t); continue; }
       if (L.type === 'flicker') {
@@ -379,6 +477,31 @@
     }
     c.globalCompositeOperation = 'destination-in'; c.drawImage(L.boxMask, 0, 0);
     this.ctx.drawImage(L.cols, x, y);
+  };
+
+  // sparks: each is born somewhere in the areas, rises with a lazy side-to-side
+  // drift, glows, flickers and burns out — then is reborn somewhere else
+  LivingPainting.prototype.renderEmbers = function (L, t) {
+    const k = L.layer.getContext('2d');
+    k.globalCompositeOperation = 'source-over'; k.clearRect(0, 0, this.W, this.H);
+    k.globalCompositeOperation = 'lighter';
+    for (const p of L.parts) {
+      const cycle = p.life + p.gap, tt = t + p.offset, gen = Math.floor(tt / cycle), age = tt - gen * cycle;
+      if (age > p.life) continue;
+      const spot = L.spots[Math.floor((hash(p.i * 7.3 + gen * 1.91) * 0.5 + 0.5) * L.spots.length) % L.spots.length];
+      const x = spot[0] + p.drift * age + p.sway * Math.sin(age * p.freq * 6.283 + p.i);
+      const y = spot[1] - p.rise * age;
+      const u = age / p.life;
+      const a = smoothstep(0, 0.12, u) * (1 - smoothstep(0.55, 1, u)) * (0.75 + 0.25 * vnoise(t * 6 + p.i * 3, p.i));
+      if (a < 0.02) continue;
+      const s = p.size * 4 * (1 - 0.35 * u);           // the sprite's glow is ~4x the hot core
+      k.globalAlpha = a;
+      k.drawImage(L.sprite, x - s / 2, y - s / 2, s, s);
+    }
+    k.globalAlpha = 1;
+    k.globalCompositeOperation = 'destination-in'; k.drawImage(L.mask, 0, 0);
+    this.ctx.globalCompositeOperation = 'lighter'; this.ctx.drawImage(L.layer, 0, 0);
+    this.ctx.globalCompositeOperation = 'source-over';
   };
 
   // eyelids: the closed-eyes face is revealed from the top of each eye downward
