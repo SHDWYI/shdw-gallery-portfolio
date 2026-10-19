@@ -629,6 +629,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="assets/js/living-painting.js"></script>
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -668,6 +669,19 @@ const PROJECTS = [
     tags: ['Game', 'Unreal Engine', 'C++'],
     color: 0x0e3a52, accent: 0x4fc3ff,
     art: 'assets/art/abyss.png',
+    // living painting: the seaweed sways and the bubbles drift; everything else is
+    // the untouched original. `fit` = where each video's pixels land on the still
+    // (measured), `areas` = [x, y, w, h] boxes (or { poly }) in still pixels where it may show.
+    animated: {
+      layers: [
+        { src: 'assets/projects/abyss/animated/abyss-seaweed.mp4',
+          fit: { x: 0, y: -101, scale: 0.9219 },
+          areas: [[-40, 215, 160, 245], [-40, 450, 385, 250], [-40, 700, 180, 200], [140, 700, 140, 185]] },
+        { src: 'assets/projects/abyss/animated/abyss-bubbles.mp4',
+          fit: { x: 59.2, y: 3.9, scale: 0.8131 },
+          areas: [[575, 445, 140, 220], [855, 430, 85, 110], [690, 440, 70, 90], [465, 1010, 130, 150]] }
+      ]
+    },
     page: {
       eyebrow: 'Game',
       role: 'Multidisciplinary Developer & Artist',
@@ -719,6 +733,42 @@ const PROJECTS = [
     tags: ['Game', 'Unity', 'Animation'],
     color: 0x241c28, accent: 0x9a86b8,
     art: 'assets/art/echoes.png',
+    // living painting: the clouds drift with lightning (flash glow dimmed so the bolt
+    // reads), the barrel fire burns, and only the wall lamp flickers — scripted: it
+    // starts dark, sputters three times, holds, then cuts out. Everything else is the
+    // untouched original. See assets/js/living-painting.js for the layer options.
+    animated: {
+      layers: [
+        { // sky: whole sky to the tree line, so lightning lights it all and the tower /
+          // branches silhouette; kept ~75px above the tower lights and the zombie's head
+          src: 'assets/projects/echoes/animated/echoes-motion.mp4',
+          fit: { x: 0, y: -101, scale: 0.9219 },
+          flash: { dim: 0.6 },
+          areas: [
+            { feather: 24, poly: [[-60, -60], [1063, -60], [1063, 120], [900, 260], [830, 250], [760, 300], [690, 330],
+                                  [665, 400], [560, 400], [470, 395], [400, 405], [320, 420], [250, 430], [-60, 415]] }
+          ] },
+        { // barrel fire: a close-up render (crop x 0–262, y 527–993 of the art) for livelier
+          // flames; the shape stops short of the zombie's sleeve, which that render moved
+          src: 'assets/projects/echoes/animated/echoes-fire.mp4',
+          fit: { x: -1, y: 529, scale: 0.2398 },
+          areas: [
+            { feather: 10, poly: [[-20, 640], [150, 640], [150, 770], [118, 800], [108, 840], [70, 862], [-20, 862]] }
+          ] },
+        { // the wall lamp — the only light that flickers. pattern = [seconds, level],
+          // level 1 = on (the original), 0 = off (glow and the light it throws darkened)
+          type: 'flicker',
+          areas: [{ feather: 30, poly: [[760, 430], [940, 430], [940, 700], [760, 700]] }],
+          darken: { x: 848, y: 545, radius: 160, strength: 0.85 },
+          pattern: [
+            [1.8, 0],                    // starts dark
+            [0.06, 1], [0.11, 0.04],     // flicker 1
+            [0.05, 0.85], [0.2, 0.04],   // flicker 2
+            [0.09, 1], [0.13, 0.08],     // flicker 3
+            [3.4, 1]                     // holds… then cuts back to dark
+          ] }
+      ]
+    },
     page: {
       eyebrow: 'Game',
       role: 'Solo Developer — Animation, Gameplay & UI',
@@ -757,6 +807,29 @@ const PROJECTS = [
     tags: ['3D Character', 'AI Art Direction'],
     color: 0x2a2440, accent: 0xa88bff,
     art: 'assets/art/red-shadow.png',
+    // living painting: firelight flickers on his hair and the embers twinkle, the
+    // feathers stir faintly, he blinks now and then, and one tear creeps down his
+    // cheek. All procedural over the untouched still (only the closed-eyes face
+    // is an AI edit), so every other pixel stays the original.
+    animated: {
+      layers: [
+        { type: 'sway', amp: 2.2, wavelength: 90, speed: 0.3,
+          areas: [{ poly: [[20,875],[300,855],[372,960],[372,1300],[300,1465],[20,1465]], feather: 30 },
+                  { poly: [[805,660],[1003,560],[1003,1310],[870,1310],[805,1060]], feather: 30 }],
+          exclude: [{ poly: [[715,815],[975,815],[975,1055],[715,1055]], feather: 12 }] },   // the gold brooch stays put
+        { type: 'glow', strength: 0.55, speed: 0.9,
+          areas: [{ poly: [[40,0],[960,0],[930,420],[880,640],[700,640],[640,330],[300,460],[300,760],[180,800],[40,640]], feather: 30 }],
+          exclude: [{ poly: [[318,370],[425,370],[425,500],[318,500]], feather: 10 }],
+          lobes: [{ x: 230, y: 120, r: 230 }, { x: 470, y: 60, r: 210 }, { x: 700, y: 150, r: 230 },
+                  { x: 130, y: 430, r: 230 }, { x: 860, y: 420, r: 210 }, { x: 290, y: 690, r: 170 }],
+          specks: { areas: [[0, 250, 270, 1300], [850, 0, 153, 1000]], max: 30, r: 8 } },
+        { type: 'blink', src: 'assets/projects/red-shadow/animated/red-shadow-eyes-closed.jpg', fit: { x: 311, y: 437.9, scale: 0.41 },
+          every: [4.5, 8], areas: [[318, 528, 90, 60], [494, 444, 102, 64]].map(b => Object.assign(b, { feather: 5 })),
+          eyes: [{ x: 322, y: 534, w: 82, h: 46 }, { x: 498, y: 450, w: 94, h: 50 }] },
+        { type: 'tear', size: 5.5, well: 3, travel: 26, fade: 2.5, rest: 8,   // follows the painted tear track
+          path: [[567, 506], [572, 522], [578, 540], [584, 558], [589, 575], [592, 590], [596, 606], [600, 624], [604, 640]] }
+      ]
+    },
     page: {
       eyebrow: '3D Character',
       role: 'Character Designer & Art Director',
@@ -1610,6 +1683,8 @@ function createPainting(proj){
       art.material.map = tex;
       art.material.emissiveMap = tex;
       art.material.needsUpdate = true;
+      // living paintings: motion layers composited over the still (see setupAnimatedArt)
+      if(proj.animated) setupAnimatedArt(proj, img, actx, [(AW-dw)/2, (AH-dh)/2, dw, dh], tex, group);
     };
     img.onerror = () => console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
     // versioned URL so swapping/replacing an image busts the browser cache —
@@ -1634,6 +1709,44 @@ function createPainting(proj){
   // the scene graph so the spotlight orientation works as-is
 
   return group;
+}
+
+// ============================================================
+//  LIVING PAINTINGS — a project's `animated` config is composited over the
+//  untouched still by assets/js/living-painting.js (video loops inside soft-
+//  edged motion areas, dimmed lightning, scripted light flicker), so everything
+//  outside those areas stays the exact original pixels. Here we only decide
+//  when each painting plays (visitor nearby) and push frames to its texture at
+//  ANIM_FPS. abyss-animated-test.html (?p=…) previews and checks a setup.
+// ============================================================
+const ANIM_FPS = 24;       // frame refreshes per second (≈ the videos' own rate)
+const ANIM_RANGE = 45;     // play only within this distance of the painting
+const animatedPaintings = [];
+
+function setupAnimatedArt(proj, img, actx, coverRect, tex, group){
+  const lp = new LivingPainting(img, proj.animated);
+  // redraw the resting state through the same canvas path the animation uses, so the
+  // painting doesn't subtly change sharpness when it starts playing (browsers scale an
+  // <img> and a <canvas> with slightly different filtering)
+  actx.clearRect(0, 0, actx.canvas.width, actx.canvas.height);
+  actx.drawImage(lp.canvas, ...coverRect);
+  tex.needsUpdate = true;
+  animatedPaintings.push({ group, actx, coverRect, tex, lp, playing: false, last: 0 });
+}
+
+function updateAnimatedPaintings(now){
+  animatedPaintings.forEach(p => {
+    const near = state === 'explore' && !pageOpen &&
+      character.position.distanceTo(p.group.userData.worldPos) < ANIM_RANGE;
+    if(near !== p.playing){
+      p.playing = near;
+      if(near) p.lp.play(); else p.lp.pause();
+    }
+    if(!p.playing || now - p.last < 1000 / ANIM_FPS || !p.lp.ready()) return;
+    p.last = now;
+    p.actx.drawImage(p.lp.render(now), ...p.coverRect);   // same placement as the static art
+    p.tex.needsUpdate = true;
+  });
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight){
@@ -2740,6 +2853,7 @@ function animate(){
   const dt = Math.min(0.05, clock.getDelta());
   updateAtmosphere(dt);
   updateSky(dt);
+  updateAnimatedPaintings(performance.now());
   updateFloatingPaintings(dt);
   updateCharacterWisps();
   // slow breathing pulse on the character's glow
