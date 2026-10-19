@@ -867,6 +867,41 @@ const PROJECTS = [
     tags: ['Concept Art', 'Storytelling'],
     color: 0x1c1a1f, accent: 0xb8b2a8,
     art: 'assets/art/ren-ashveil.png',
+    // living painting: cards drift down and glitch as they flip face-up, rain falls
+    // and ripples the wet floor, the cape sways, the neon sign stutters, his name
+    // glitches, and the pendant beats like a heart. All procedural — he stays still.
+    animated: {
+      layers: [
+        // the cape, rooted at each shoulder (hands and painted cards stay still)
+        { type: 'flutter', anchor: [300, 330], reach: 950, amp: 9, wavelength: 170, speed: 0.25,
+          areas: [{ poly: [[200,620],[290,700],[305,1000],[290,1250],[260,1520],[0,1540],[0,1250],[90,980],[170,760]], feather: 30 }],
+          exclude: [{ poly: [[190,770],[300,770],[300,960],[190,960]], feather: 14 }] },
+        { type: 'flutter', anchor: [560, 280], reach: 1000, amp: 9, wavelength: 170, speed: 0.22,
+          areas: [{ poly: [[640,330],[740,430],[800,620],[880,760],[960,1000],[990,1250],[960,1470],[760,1470],[700,1250],[650,950],[620,700]], feather: 30 }],
+          exclude: [{ poly: [[825,1290],[1003,1290],[1003,1495],[825,1495]], feather: 10 },
+                    { poly: [[530,640],[640,640],[640,820],[530,820]], feather: 14 },
+                    { poly: [[640,900],[700,900],[700,962],[640,962]], feather: 8 }] },
+        // "Ace of Illusions" sign: neon hum and stutter
+        { type: 'neon', key: { minLum: 55, fullLum: 130 }, every: [3, 8],
+          areas: [{ poly: [[752,140],[935,140],[935,615],[752,615]], feather: 6 }],
+          exclude: [{ poly: [[740,470],[790,470],[790,620],[740,620]], feather: 6 }] },
+        // his Japanese name glitches into English, holds, then glitches back
+        { type: 'glitch', rect: [30, 45, 128, 600], every: [8, 14], dur: 0.45, hold: 2.4, shift: 16,
+          alt: { text: 'REN·ASHVEIL', column: [68, 138, 606], weight: 400 } },
+        // the pendant's red gem: a slow, resting heartbeat lit from within
+        { type: 'pulse', x: 394, y: 476, r: 16, glow: 26, period: 2.6, strength: 0.35, halo: 0.08 },
+        // raindrops on the wet floor (not on his shoes or the painted card)
+        { type: 'ripples', count: 26, size: [14, 34], life: [0.8, 1.4],
+          areas: [{ poly: [[0,1385],[1003,1385],[1003,1569],[0,1569]], feather: 10 }],
+          exclude: [{ poly: [[205,1380],[480,1380],[480,1569],[205,1569]], feather: 8 },
+                    { poly: [[548,1390],[705,1390],[705,1569],[548,1569]], feather: 8 },
+                    { poly: [[825,1290],[1003,1290],[1003,1495],[825,1495]], feather: 8 }] },
+        // cards falling one by one beside him (left and right of his body)
+        { type: 'cards', every: [3.5, 6.5], fall: [65, 100], size: [34, 48],
+          lanes: [[30, 190], [700, 960]], floor: [1430, 1540] },
+        { type: 'rain', count: 110, speed: [1000, 1500], length: [20, 46], slant: 0.12, alpha: 0.26 }
+      ]
+    },
     page: {
       eyebrow: 'Character Concept',
       role: 'Creator & Writer',
