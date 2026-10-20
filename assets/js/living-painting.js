@@ -1298,7 +1298,7 @@
       if (L.type === 'blink') { this.renderBlink(L, t); continue; }
       if (L.type === 'tear') { this.renderTear(L, t); continue; }
       if (L.type === 'flicker') {
-        const level = flickerLevel(L, t);
+        const level = L.level = flickerLevel(L, t);   // L.level is read by the gallery's lamp sound
         if (level < 1) { ctx.globalAlpha = 1 - level; ctx.drawImage(L.offMasked, 0, 0); ctx.globalAlpha = 1; }
         continue;
       }

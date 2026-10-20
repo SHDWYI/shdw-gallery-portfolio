@@ -91,6 +91,43 @@
     node.connect(g); g.connect(S.out);
     osc.start(t); osc.stop(t + a + o.dur + 0.05);
   }
+  // Thunder: a tearing crackle that darkens as it goes (close strikes only), then a
+  // long irregular roll — low noise whose filter sinks and whose loudness surges a few
+  // times before dying away, the way real thunder echoes off the land.
+  function thunder(S, t, k, close){
+    const c = S.ctx;
+    const voice = (buf, f0, f1, fdur, q) => {
+      const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = q || 0.5;
+      f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + fdur);
+      const g = c.createGain(); g.gain.setValueAtTime(0, t);
+      src.connect(f); f.connect(g); g.connect(S.out);
+      src.start(t, Math.random() * buf.duration);
+      return { src, g: g.gain };
+    };
+    if (close) {   // the tear: dense, uneven crackling, low-passed so it never clicks
+      const v = voice(S.eng.white, rnd(2600, 3400), 260, 1.4, 0.4);
+      let u = t;
+      for (let i = 0; i < 34 && u < t + 1.3; i++) {
+        const a = k * rnd(0.12, 0.42) * (1 - (u - t) / 1.5);
+        v.g.setTargetAtTime(a, u, 0.006); v.g.setTargetAtTime(a * 0.25, u + rnd(0.01, 0.03), 0.025);
+        u += rnd(0.012, 0.07);
+      }
+      v.g.setTargetAtTime(0, u, 0.15); v.src.stop(u + 1.2);
+    }
+    const len = rnd(5.5, 8);
+    const r = voice(S.eng.brown, close ? 650 : 320, 95, len * 0.8, 0.6);
+    let u = t + (close ? 0.08 : 0), lvl = close ? 1 : 0.6;
+    r.g.setTargetAtTime(k * 1.6 * lvl, u, close ? 0.06 : 0.35);
+    while ((u += rnd(0.5, 1.4)) < t + len - 1.5) {   // the rolls
+      lvl *= rnd(0.62, 0.95);
+      r.g.setTargetAtTime(k * 1.6 * lvl * rnd(1.1, 1.6), u, rnd(0.08, 0.2));
+      r.g.setTargetAtTime(k * 1.6 * lvl * rnd(0.45, 0.7), u + rnd(0.25, 0.5), 0.3);
+    }
+    r.g.setTargetAtTime(0, u, 0.6); r.src.stop(t + len + 3);
+    const sub = voice(S.eng.brown, 120, 60, len, 0.7);   // the body you feel more than hear
+    sub.g.setTargetAtTime(k * (close ? 1.1 : 0.7), t + 0.15, 0.4); sub.g.setTargetAtTime(0, t + len * 0.6, 0.9); sub.src.stop(t + len + 3);
+  }
   // A soft bell/chime: a few inharmonic partials.
   function chime(S, t, f, gain, dur){
     [[1, 1], [2.76, 0.32], [5.4, 0.12]].forEach(([m, k]) => blip(S, t, { f0: f * m, dur: dur / (m > 1 ? 1.8 : 1), gain: gain * k, attack: 0.003 }));
@@ -115,20 +152,34 @@
         [[3, 7], (S, t) => { const n = 2 + (Math.random() * 4 | 0); for(let i = 0; i < n; i++) blip(S, t + i * rnd(0.05, 0.14), { f0: rnd(380, 600), f1: rnd(900, 1500), dur: 0.05, gain: 0.022 }); }]
       ]
     },
-    // zombie survival: cold wind, a dying fluorescent light, groans in the distance
+    // zombie survival: a night breeze, the barrel fire, the wall lamp's electric hum
+    // (driven by the painting: signal 'lamp' = its light level), thunder on each
+    // lightning flash (signal 'thunder' = how bright), groans in the distance
     echoes: {
       mix: 1.24,
       beds: S => {
-        bed(S, { noise: 'white', filter: 'bandpass', freq: 380, q: 0.6, gain: 0.07, lfo: [0.11, 0.5], sweep: [0.07, 140] });
-        bed(S, { noise: 'brown', freq: 220, gain: 0.25 });
-        S.buzz = tone(S, { type: 'sawtooth', freq: 100, gain: 0.0, lp: 2600 });
+        bed(S, { noise: 'white', filter: 'bandpass', freq: 380, q: 0.6, gain: 0.03, lfo: [0.11, 0.5], sweep: [0.07, 120] });   // breeze
+        bed(S, { noise: 'brown', freq: 480, gain: 0.16, lfo: [0.4, 0.3] });                                                        // fire roar
+        // the lamp: mains hum + a brighter buzz, faded (never switched) so it can't click
+        const c = S.ctx, lamp = c.createGain(); lamp.gain.value = 0; lamp.connect(S.out); S.lamp = lamp; S.lampOn = 0;
+        const hum = c.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 100;
+        const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.8;
+        const hg = c.createGain(); hg.gain.value = 0.02; hum.connect(f); f.connect(hg); hg.connect(lamp);
+        const low = c.createOscillator(); low.frequency.value = 100; const lg = c.createGain(); lg.gain.value = 0.03; low.connect(lg); lg.connect(lamp);
+        hum.start(); low.start(); S.nodes.push(hum, low);
+      },
+      signals: {
+        lamp: (S, level, t) => {
+          S.lamp.gain.setTargetAtTime(level, t, 0.012);
+          if (level > 0.5 && S.lampOn <= 0.5) hit(S, t, { filter: 'highpass', freq: 2500, dur: 0.035, gain: 0.08 });   // the tink as it catches
+          S.lampOn = level;
+        },
+        thunder: (S, k, t) => thunder(S, t + rnd(0.15, 0.4), k, true)   // sound lags the flash a touch
       },
       events: [
-        // the light stutters: quick bursts of electrical buzz
-        [[0.6, 3.2], (S, t) => { const g = S.buzz.gain, n = 1 + (Math.random() * 4 | 0); let u = t;
-          for(let i = 0; i < n; i++){ const on = rnd(0.03, 0.12); g.setValueAtTime(0.018, u); g.setValueAtTime(0, u + on); u += on + rnd(0.02, 0.09); } }],
-        [[9, 17], (S, t) => blip(S, t, { type: 'sawtooth', f0: rnd(105, 125), f1: rnd(78, 92), dur: rnd(1.4, 2.2), attack: 0.35, gain: 0.03, lp: 520 })],
-        [[20, 32], (S, t) => hit(S, t, { noise: 'brown', filter: 'lowpass', freq: 110, dur: 4.5, attack: 0.6, gain: 0.7 })]
+        [[0.06, 0.45], (S, t) => hit(S, t, { freq: rnd(1400, 4200), q: 1.4, dur: rnd(0.012, 0.045), gain: rnd(0.03, 0.11) })],   // fire crackle
+        [[3, 7], (S, t) => hit(S, t, { freq: rnd(700, 1300), q: 0.9, dur: 0.08, gain: 0.14 })],                                    // ember pop
+        [[11, 19], (S, t) => blip(S, t, { type: 'sawtooth', f0: rnd(105, 125), f1: rnd(78, 92), dur: rnd(1.4, 2.2), attack: 0.35, gain: 0.03, lp: 520 })]
       ]
     },
     // fire: a low roar, crackles, the odd pop
@@ -155,8 +206,9 @@
       events: [
         [[0.25, 1.1], (S, t) => blip(S, t, { f0: rnd(1500, 2600), f1: rnd(700, 1100), dur: 0.05, gain: rnd(0.012, 0.03) })],
         // the sign stutters now and then (it flickers on the painting too)
-        [[3, 8], (S, t) => { const g = S.neon.gain; let u = t; for(let i = 0; i < 3; i++){ g.setValueAtTime(0.03, u); g.setValueAtTime(0.004, u + 0.05); u += rnd(0.07, 0.16); } g.setValueAtTime(0.012, u); }],
-        [[24, 40], (S, t) => hit(S, t, { noise: 'brown', filter: 'lowpass', freq: 90, dur: 5, attack: 0.9, gain: 0.55 })]
+        // (short fades, not hard switches, so it never clicks)
+        [[3, 8], (S, t) => { const g = S.neon.gain; let u = t; for(let i = 0; i < 3; i++){ g.setTargetAtTime(0.03, u, 0.008); g.setTargetAtTime(0.004, u + 0.05, 0.008); u += rnd(0.07, 0.16); } g.setTargetAtTime(0.012, u, 0.01); }],
+        [[24, 40], (S, t) => thunder(S, t, 0.45, false)]   // far away: just the roll
       ]
     },
     // a mermaid in a nebula: soft underwater hush, a slow shimmering pad, bubbles, twinkles
@@ -257,6 +309,11 @@
         }
       }
     }
+  };
+  // live cues from the painting (lamp level, a lightning flash…); ignored while the scene sleeps
+  GalleryAmbience.prototype.signal = function(key, name, value){
+    const S = this.scenes[key], fn = S && SCENES[key].signals && SCENES[key].signals[name];
+    if (fn) fn(S, value, this.ctx.currentTime);
   };
   GalleryAmbience.prototype.stopAll = function(){ Object.keys(this.scenes).forEach(k => this.sleep(k)); };
 

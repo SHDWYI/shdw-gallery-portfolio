@@ -712,8 +712,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=17"></script>
-<script src="assets/js/ambience.js?v=1"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=18"></script>
+<script src="assets/js/ambience.js?v=2"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -3535,8 +3535,8 @@ if(muteBtn) muteBtn.addEventListener('click', toggleMute);
 // with where the painting is, and the music dips a little so they can be heard.
 const AMBIENCE = {
   volume: 0.55,     // overall loudness of the soundscapes, 0–1
-  near: 4,          // full volume this close (floor distance)
-  far: 15,          // silent (and switched off) beyond this
+  near: 10,         // full volume this close (floor distance from you to the painting)
+  far: 17,          // silent (and switched off) beyond this
   musicDip: 0.35,   // the music drops by this fraction right in front of a painting
   viewing: 0.35,    // fraction kept while a project page is open
   look: [0.35, 0.75], // only while you look at the painting: silent below the first
@@ -3558,11 +3558,28 @@ function initAmbience(){
   music.gain.disconnect(); music.gain.connect(musicDuck); musicDuck.connect(audioListener.getInput());
   ambience = new GalleryAmbience(ctx, ambMaster);
 }
+// live cues from a painting's animation: the lamp's light level, lightning flashes
+function ambienceCues(key, g){
+  const P = g.userData.ambP || (g.userData.ambP = animatedPaintings.find(p => p.group === g) || null);
+  if(!P || !P.lp.layers) return;
+  const C = P.ambCues || (P.ambCues = { lamp: P.lp.layers.find(l => l.type === 'flicker'), flash: P.lp.layers.find(l => l.flash), lastLamp: -1, armed: true, next: 0 });
+  if(C.lamp){
+    const lv = P.playing && C.lamp.level != null ? C.lamp.level : 1;   // a resting painting shows the lamp on
+    if(lv !== C.lastLamp){ ambience.signal(key, 'lamp', lv); C.lastLamp = lv; }
+  }
+  if(C.flash && P.playing && C.flash.rise != null){
+    const r = C.flash.rise, now = performance.now();
+    if(C.armed && r > 0.6 && now > C.next){
+      ambience.signal(key, 'thunder', Math.min(1, 0.55 + r * 0.15));
+      C.armed = false; C.next = now + 1800;
+    } else if(r < 0.3) C.armed = true;
+  }
+}
 function updateAmbience(){
   if(!entered || !ambience) return;
   const ctx = audioListener.context, now = ctx.currentTime;
   ambMaster.gain.setTargetAtTime(muted || document.hidden ? 0 : AMBIENCE.volume * (state === 'viewing' ? AMBIENCE.viewing : 1), now, 0.3);
-  camera.getWorldPosition(_ambCam);
+  _ambCam.copy(character.position);   // distance from you, not the camera (it trails behind in 3rd person)
   _ambRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
   camera.getWorldDirection(_ambFwd); _ambFwd.y = 0; _ambFwd.normalize();
   let loudest = 0;
@@ -3579,6 +3596,7 @@ function updateAmbience(){
     const pan = d > 0.01 ? (dx*_ambRight.x + dz*_ambRight.z) / d * 0.7 : 0;
     ambience.setLevel(key, k, pan);
     if(k > loudest) loudest = k;
+    if(k > 0) ambienceCues(key, g);
   });
   ambience.tick();
   musicDuck.gain.setTargetAtTime(1 - AMBIENCE.musicDip * loudest, now, 0.4);
