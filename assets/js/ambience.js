@@ -15,6 +15,8 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = arr => arr[(Math.random() * arr.length) | 0];
 
+  // Long loops (8 s) so the ear can't catch the repeat, and seamless without any
+  // fade at the joint (a fade there made an audible dip every loop).
   function makeNoise(ctx, kind, secs){
     const len = Math.floor(ctx.sampleRate * secs), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let last = 0;
@@ -23,17 +25,18 @@
       if(kind === 'brown'){ last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
       else d[i] = w;
     }
-    // fade the loop seam so it never clicks
-    const f = Math.min(2000, len >> 3);
-    for(let i = 0; i < f; i++){ const k = i / f; d[i] *= k; d[len - 1 - i] *= k; }
+    if(kind === 'brown'){   // remove the drift so the end meets the start
+      const step = (d[len - 1] - d[0]) / len;
+      for(let i = 0; i < len; i++) d[i] -= step * i;
+    }
     return buf;
   }
-
   // ---------------------------------------------------------------- building blocks
   // A looping noise bed through a filter, with an optional slow "breathing" LFO on its level.
   function bed(S, o){
     const c = S.ctx, src = c.createBufferSource();
     src.buffer = o.noise === 'white' ? S.eng.white : S.eng.brown; src.loop = true;
+    src.playbackRate.value = rnd(0.96, 1.04);   // two beds on the same loop never line up
     const f = c.createBiquadFilter(); f.type = o.filter || 'lowpass'; f.frequency.value = o.freq; f.Q.value = o.q || 0.7;
     const g = c.createGain(); g.gain.value = o.gain;
     src.connect(f); f.connect(g); g.connect(S.out);
@@ -128,6 +131,28 @@
     const sub = voice(S.eng.brown, 120, 60, len, 0.7);   // the body you feel more than hear
     sub.g.setTargetAtTime(k * (close ? 1.1 : 0.7), t + 0.15, 0.4); sub.g.setTargetAtTime(0, t + len * 0.6, 0.9); sub.src.stop(t + len + 3);
   }
+  // A swim stroke heard underwater: a low, muffled push of water — resonant low-pass
+  // noise that swells and sinks (nothing above ~600 Hz, so it never sounds like air).
+  function stroke(S, t, pan, k){
+    const c = S.ctx, src = c.createBufferSource(); src.buffer = S.eng.brown; src.loop = true;
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 3.5;
+    const d = rnd(0.7, 1.0);
+    f.frequency.setValueAtTime(110, t); f.frequency.exponentialRampToValueAtTime(rnd(420, 560), t + d * 0.35); f.frequency.exponentialRampToValueAtTime(120, t + d);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1.1 * k, t + d * 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    src.connect(f); f.connect(g);
+    if (S.eng.canPan) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(S.out); } else g.connect(S.out);
+    src.start(t, Math.random() * src.buffer.duration); src.stop(t + d + 0.05);
+  }
+  // A little cluster of bubbles: each a quick upward "bloop", smaller ones higher.
+  function bubbles(S, t, n, k){
+    let u = t;
+    for (let i = 0; i < n; i++) {
+      const f = rnd(380, 1100);
+      blip(S, u, { f0: f, f1: f * rnd(1.6, 2.4), dur: rnd(0.03, 0.07), gain: 0.035 * k * rnd(0.5, 1), lp: 2500 });
+      u += rnd(0.03, 0.16);
+    }
+  }
   // A soft bell/chime: a few inharmonic partials.
   function chime(S, t, f, gain, dur){
     [[1, 1], [2.76, 0.32], [5.4, 0.12]].forEach(([m, k]) => blip(S, t, { f0: f * m, dur: dur / (m > 1 ? 1.8 : 1), gain: gain * k, attack: 0.003 }));
@@ -211,16 +236,16 @@
         [[24, 40], (S, t) => thunder(S, t, 0.45, false)]   // far away: just the roll
       ]
     },
-    // a mermaid in a nebula: soft underwater hush, a slow shimmering pad, bubbles, twinkles
+    // a mermaid swimming: everything heard as if underwater — the muffled push of
+    // her strokes (low, no hiss), the bubbles they shed, little bubble streams rising,
+    // the odd bigger glug. No wind, no music.
     requiem: {
-      mix: 1.05,
-      beds: S => {
-        bed(S, { noise: 'brown', freq: 260, gain: 0.22, lfo: [0.07, 0.4] });
-        [110, 164.81, 246.94, 329.63].forEach((f, i) => tone(S, { freq: f, detune: rnd(-6, 6), gain: 0.022 - i * 0.003, lfo: [0.05 + i * 0.03, 0.7] }));
-      },
+      mix: 1.1,
+      beds: S => { bed(S, { noise: 'brown', freq: 220, q: 0.7, gain: 0.16, lfo: [0.08, 0.35] }); },   // the deep, still water around you
       events: [
-        [[1.6, 3.6], (S, t) => { const n = 2 + (Math.random() * 3 | 0); for(let i = 0; i < n; i++) blip(S, t + i * rnd(0.08, 0.2), { f0: rnd(300, 520), f1: rnd(800, 1300), dur: 0.07, gain: 0.02 }); }],
-        [[1.2, 3.5], (S, t) => chime(S, t, pick(PENTA) * 2, 0.012, 2.6)]
+        [[2.6, 4.4], (S, t) => { stroke(S, t, rnd(-0.5, 0.5), 1); bubbles(S, t + rnd(0.35, 0.55), 5 + (Math.random() * 6 | 0), 1); }],
+        [[1.4, 3.2], (S, t) => bubbles(S, t, 3 + (Math.random() * 5 | 0), 0.7)],
+        [[6, 12], (S, t) => blip(S, t, { f0: rnd(140, 200), f1: rnd(320, 420), dur: 0.16, gain: 0.07, lp: 900 })]   // a bigger bubble
       ]
     },
     // molten stone: deep rumble, hiss, lava bubbles, crackles
@@ -262,8 +287,8 @@
   // ---------------------------------------------------------------- engine
   function GalleryAmbience(ctx, dest){
     this.ctx = ctx; this.dest = dest; this.scenes = {};
-    this.white = makeNoise(ctx, 'white', 2);
-    this.brown = makeNoise(ctx, 'brown', 4);
+    this.white = makeNoise(ctx, 'white', 8);
+    this.brown = makeNoise(ctx, 'brown', 8);
     this.canPan = typeof ctx.createStereoPanner === 'function';
   }
   GalleryAmbience.SCENES = SCENES;

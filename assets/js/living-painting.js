@@ -1775,6 +1775,7 @@
     const ctx = this.ctx, since = sinceEvent(L.sched, t);
     let level = 1 + 0.07 * vnoise(t * 9, 5);
     if (since < 0.42) { let u = since; for (const [d, v] of NEON_STUTTER) { if (u < d) { level = v; break; } u -= d; } }
+    L.level = level;   // read by the gallery's neon buzz
     const { x, y } = L.box;
     if (level < 1) { ctx.globalAlpha = Math.min(1, (1 - level) * 0.85); ctx.drawImage(L.sprites.shade, x, y); }
     else if (level > 1) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, (level - 1) * 1.6); ctx.drawImage(L.sprites.add, x, y); }
