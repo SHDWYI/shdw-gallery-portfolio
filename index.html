@@ -2230,7 +2230,9 @@ function updateCharacterWisps(){
   });
 }
 
-character.position.set(0, 0, ROOM_D/2 + 16);
+// where every visit starts — hand-picked in first person (eyes on the hall)
+const START = { x: -0.304, z: 39.61, yaw: -0.006, pitch: -0.05 };
+character.position.set(START.x, 0, START.z);
 // scaled up — uniform scale keeps proportions and the feet grounded
 character.scale.setScalar(1.18);
 scene.add(character);
@@ -2456,7 +2458,7 @@ addEventListener('keydown', e=>{
 });
 addEventListener('keyup', e=> keys[e.key.toLowerCase()] = false);
 
-let camYaw = 0, camPitch = 0.25, camDist = 5.2, camHeight = 2.0;
+let camYaw = START.yaw, camPitch = START.pitch, camDist = 5.2, camHeight = 2.0;
 // look-drag is tracked per pointer id so a second finger (on the joystick) can't hijack it
 let lookPointerId = null, lastX=0, lastY=0;
 renderer.domElement.addEventListener('pointerdown', e=>{
@@ -2502,7 +2504,7 @@ joyEl.addEventListener('pointermove', e=>{ if(e.pointerId===joyState.id) handleJ
 joyEl.addEventListener('pointerup', endJoy);
 joyEl.addEventListener('pointercancel', endJoy);
 
-let facing = Math.PI; // character yaw
+let facing = START.yaw + Math.PI; // character yaw — the body faces where the start view looks
 let nearestPainting = null;
 let state = 'explore'; // explore | transition-in | viewing | transition-out
 
