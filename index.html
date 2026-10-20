@@ -712,7 +712,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=16"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=16"></script>
+<script src="assets/js/ambience.js?v=1"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -3373,6 +3374,7 @@ function animate(){
   updateAtmosphere(dt);
   updateSky(dt);
   updateAnimatedPaintings(performance.now());
+  updateAmbience();
   updateFloatingPaintings(dt);
   updateCharacterWisps();
   // slow breathing pulse on the character's glow
@@ -3502,6 +3504,54 @@ function toggleMute(){
 }
 if(muteBtn) muteBtn.addEventListener('click', toggleMute);
 
+// ---------- Ambience: a quiet soundscape at each painting (assets/js/ambience.js) ----------
+// Synthesised live, so there is nothing to download. A painting's sounds exist only
+// while you're within AMBIENCE.far of it; they fade in as you walk up, sit left/right
+// with where the painting is, and the music dips a little so they can be heard.
+const AMBIENCE = {
+  volume: 0.55,     // overall loudness of the soundscapes, 0–1
+  near: 4,          // full volume this close (floor distance)
+  far: 15,          // silent (and switched off) beyond this
+  musicDip: 0.35,   // the music drops by this fraction right in front of a painting
+  viewing: 0.35,    // fraction kept while a project page is open
+  scenes: {         // painting title → soundscape
+    'PROJECT: ABYSS': 'abyss', 'ECHOES BEYOND THE DEAD': 'echoes', 'RED SHADOW': 'redshadow',
+    'REN ASHVEIL': 'ren', 'REQUIEM': 'requiem', 'REBIRTH': 'rebirth', 'BLUEEY': 'blueey', 'FORGE AI COACH APP': 'forge'
+  }
+};
+var ambience = null, ambMaster = null, musicDuck = null;
+const _ambCam = new THREE.Vector3(), _ambRight = new THREE.Vector3();
+function initAmbience(){
+  if(ambience || !window.GalleryAmbience) return;
+  const ctx = audioListener.context;
+  ambMaster = ctx.createGain(); ambMaster.gain.value = 0;
+  ambMaster.connect(audioListener.getInput());
+  // route the music through a dip node so the soundscapes can be heard up close
+  musicDuck = ctx.createGain();
+  music.gain.disconnect(); music.gain.connect(musicDuck); musicDuck.connect(audioListener.getInput());
+  ambience = new GalleryAmbience(ctx, ambMaster);
+}
+function updateAmbience(){
+  if(!entered || !ambience) return;
+  const ctx = audioListener.context, now = ctx.currentTime;
+  ambMaster.gain.setTargetAtTime(muted || document.hidden ? 0 : AMBIENCE.volume * (state === 'viewing' ? AMBIENCE.viewing : 1), now, 0.3);
+  camera.getWorldPosition(_ambCam);
+  _ambRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  let loudest = 0;
+  paintingGroups.forEach((g, i)=>{
+    const key = AMBIENCE.scenes[PROJECTS[i].title]; if(!key) return;
+    const wp = g.userData.worldPos, dx = wp.x - _ambCam.x, dz = wp.z - _ambCam.z, d = Math.hypot(dx, dz);
+    let k = 1 - (d - AMBIENCE.near) / (AMBIENCE.far - AMBIENCE.near);
+    k = k <= 0 ? 0 : k >= 1 ? 1 : k*k*(3 - 2*k);
+    if(k <= 0 && !ambience.scenes[key]) return;   // far away and asleep: costs nothing
+    const pan = d > 0.01 ? (dx*_ambRight.x + dz*_ambRight.z) / d * 0.7 : 0;
+    ambience.setLevel(key, k, pan);
+    if(k > loudest) loudest = k;
+  });
+  ambience.tick();
+  musicDuck.gain.setTargetAtTime(1 - AMBIENCE.musicDip * loudest, now, 0.4);
+}
+
 // transient toast — shared by music changes and gameplay hints
 let toastTimer = null;
 function showToast(msg){
@@ -3526,6 +3576,8 @@ setTimeout(()=>{
 function enterGallery(){
   if(entered) return;
   entered = true;
+  audioListener.context.resume();
+  initAmbience();
   startMusic();
   loadingEl.style.opacity = 0;
   setTimeout(()=> loadingEl.style.display = 'none', 850);
