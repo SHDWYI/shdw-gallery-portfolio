@@ -3418,6 +3418,31 @@ const MUSIC = {
   switchFade: 0.35  // seconds, fade-out when skipping to the next song
 };
 
+// iPhone/iPad put Web Audio in the "ambient" category, which the silent switch
+// (or Silent in Control Center) mutes — so without headphones there was no sound.
+// Ask for the "playback" category instead, like a video: newer Safari supports
+// navigator.audioSession; older ones switch when a real <audio> element plays,
+// so a tiny silent looping clip runs alongside (started on the entry tap).
+try { if(navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+const iosUnmute = (()=>{
+  if(!IS_TOUCH) return null;
+  // 0.5 s of silence, 8 kHz mono 8-bit WAV
+  const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+  const str = (o, t) => { for(let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+  const a = document.createElement('audio');
+  a.src = URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  a.loop = true; a.preload = 'auto'; a.setAttribute('playsinline', ''); a.setAttribute('x-webkit-airplay', 'deny');
+  return a;
+})();
+function startIosUnmute(){ if(iosUnmute && iosUnmute.paused){ const p = iosUnmute.play(); if(p && p.catch) p.catch(()=>{}); } }
+document.addEventListener('visibilitychange', ()=>{
+  if(!iosUnmute) return;
+  if(document.hidden) iosUnmute.pause(); else if(entered) startIosUnmute();
+});
+
 const audioListener = new THREE.AudioListener();
 camera.add(audioListener);
 const music = new THREE.Audio(audioListener);
@@ -3514,13 +3539,15 @@ const AMBIENCE = {
   far: 15,          // silent (and switched off) beyond this
   musicDip: 0.35,   // the music drops by this fraction right in front of a painting
   viewing: 0.35,    // fraction kept while a project page is open
+  look: [0.35, 0.75], // only while you look at the painting: silent below the first
+                      // facing value (cos of the angle off-centre), full above the second
   scenes: {         // painting title → soundscape
     'PROJECT: ABYSS': 'abyss', 'ECHOES BEYOND THE DEAD': 'echoes', 'RED SHADOW': 'redshadow',
     'REN ASHVEIL': 'ren', 'REQUIEM': 'requiem', 'REBIRTH': 'rebirth', 'BLUEEY': 'blueey', 'FORGE AI COACH APP': 'forge'
   }
 };
 var ambience = null, ambMaster = null, musicDuck = null;
-const _ambCam = new THREE.Vector3(), _ambRight = new THREE.Vector3();
+const _ambCam = new THREE.Vector3(), _ambRight = new THREE.Vector3(), _ambFwd = new THREE.Vector3();
 function initAmbience(){
   if(ambience || !window.GalleryAmbience) return;
   const ctx = audioListener.context;
@@ -3537,12 +3564,17 @@ function updateAmbience(){
   ambMaster.gain.setTargetAtTime(muted || document.hidden ? 0 : AMBIENCE.volume * (state === 'viewing' ? AMBIENCE.viewing : 1), now, 0.3);
   camera.getWorldPosition(_ambCam);
   _ambRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  camera.getWorldDirection(_ambFwd); _ambFwd.y = 0; _ambFwd.normalize();
   let loudest = 0;
   paintingGroups.forEach((g, i)=>{
     const key = AMBIENCE.scenes[PROJECTS[i].title]; if(!key) return;
     const wp = g.userData.worldPos, dx = wp.x - _ambCam.x, dz = wp.z - _ambCam.z, d = Math.hypot(dx, dz);
     let k = 1 - (d - AMBIENCE.near) / (AMBIENCE.far - AMBIENCE.near);
     k = k <= 0 ? 0 : k >= 1 ? 1 : k*k*(3 - 2*k);
+    // …and only while you're looking its way (fades as you turn away)
+    let v = d > 0.01 ? ((dx*_ambFwd.x + dz*_ambFwd.z) / d - AMBIENCE.look[0]) / (AMBIENCE.look[1] - AMBIENCE.look[0]) : 1;
+    v = v <= 0 ? 0 : v >= 1 ? 1 : v*v*(3 - 2*v);
+    k *= v;
     if(k <= 0 && !ambience.scenes[key]) return;   // far away and asleep: costs nothing
     const pan = d > 0.01 ? (dx*_ambRight.x + dz*_ambRight.z) / d * 0.7 : 0;
     ambience.setLevel(key, k, pan);
@@ -3576,6 +3608,7 @@ setTimeout(()=>{
 function enterGallery(){
   if(entered) return;
   entered = true;
+  startIosUnmute();   // must run inside the tap, before the audio context resumes
   audioListener.context.resume();
   initAmbience();
   startMusic();
