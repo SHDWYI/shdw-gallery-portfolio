@@ -4,6 +4,24 @@
 <meta charset="UTF-8" />
 <title>SHDWYI — Gallery</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<!-- link previews (LinkedIn, Discord, iMessage, X…) and search results -->
+<meta name="description" content="Step into SHDWYI's shadow gallery — a walkable 3D portfolio of living art, original characters and app design." />
+<meta name="theme-color" content="#08080b" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="SHDWYI" />
+<meta property="og:title" content="SHDWYI — The Shadow Gallery" />
+<meta property="og:description" content="A walkable 3D portfolio where every painting comes alive — original characters, digital art and app design by SHDWYI." />
+<meta property="og:url" content="https://shdwyi.github.io/shdw-gallery-portfolio/" />
+<meta property="og:image" content="https://shdwyi.github.io/shdw-gallery-portfolio/assets/og-image.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="A dark marble gallery hall with glowing framed paintings under a starry sky" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="SHDWYI — The Shadow Gallery" />
+<meta name="twitter:description" content="A walkable 3D portfolio where every painting comes alive." />
+<meta name="twitter:image" content="https://shdwyi.github.io/shdw-gallery-portfolio/assets/og-image.jpg" />
+<link rel="icon" href="assets/ui/favicon.png" type="image/png" />
+<link rel="apple-touch-icon" href="assets/ui/apple-touch-icon.png" />
 <style>
   :root{
     --bg: #08080b;
@@ -176,6 +194,11 @@
   }
   .toc-item:hover{ color:var(--crimson-glow); background:rgba(255,255,255,0.04); }
   .toc-item b{ color:var(--crimson-glow); font-weight:500; font-size:10px; flex:none; }
+  .toc-item.toc-work{ color:var(--ink); border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:4px; padding-bottom:12px; }
+  @media (max-width: 600px){
+    #nav-work{ display:none; }                                /* phones: Projects lives in the ☰ menu instead */
+    #toc-list{ position:fixed; left:12px; right:12px; min-width:0; top:120px; }   /* full width, so it never runs off-screen (top set on open) */
+  }
 
   /* --- Jump button (touch devices only) --- */
   #jump-btn{
@@ -517,6 +540,48 @@
   }
   .load-hint{ text-align:center; font-size:14px; color:var(--ink-dim); animation:loadpulse 2.6s ease-in-out infinite; }
   @keyframes loadpulse{ 0%,100%{ opacity:0.4; } 50%{ opacity:1; } }
+  .load-alt{
+    display:block; margin:34px auto 0; text-align:center; font-family:'Space Grotesk', sans-serif; font-style:normal;
+    font-size:11px; letter-spacing:0.24em; text-transform:uppercase; color:#8d867f; cursor:pointer;
+    padding:10px 16px; border-bottom:1px solid transparent; transition:color 0.2s ease;
+  }
+  .load-alt:hover{ color:var(--crimson-glow); }
+
+  /* --- Projects: a plain grid of every project, for a quick look without the 3D walk --- */
+  #work{
+    position:fixed; inset:0; z-index:40; background:#08080b; overflow-y:auto;
+    opacity:0; pointer-events:none; transition:opacity 0.3s ease; -webkit-overflow-scrolling:touch;
+  }
+  #work.show{ opacity:1; pointer-events:auto; }
+  .work-inner{ max-width:1180px; margin:0 auto; padding:84px 28px 70px; }
+  .work-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:34px; }
+  .work-eyebrow{ font-size:10px; letter-spacing:0.32em; text-transform:uppercase; color:var(--crimson-glow); margin-bottom:10px; }
+  .work-title{ font-family:'Cormorant Garamond', serif; font-weight:600; font-size:clamp(34px, 6vw, 56px); color:var(--ink); line-height:1; }
+  .work-sub{ color:#a89f96; font-size:14px; margin-top:12px; max-width:520px; line-height:1.6; }
+  .work-back{
+    font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:var(--ink); cursor:pointer;
+    border:1px solid rgba(255,255,255,0.2); border-radius:999px; padding:12px 20px; transition:all 0.2s ease; white-space:nowrap;
+  }
+  .work-back:hover{ border-color:var(--crimson-glow); color:var(--crimson-glow); }
+  .work-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:22px; }
+  .work-card{
+    cursor:pointer; border-radius:12px; overflow:hidden; background:#101015;
+    border:1px solid rgba(255,255,255,0.07); transition:transform 0.25s ease, border-color 0.25s ease;
+  }
+  .work-card:hover{ transform:translateY(-4px); border-color:rgba(230,15,40,0.55); }
+  .work-card .wc-img{ aspect-ratio:3/4; background:#0c0c10 center top / cover no-repeat; }
+  .work-card .wc-body{ padding:16px 18px 18px; }
+  .wc-num{ font-size:10px; letter-spacing:0.24em; color:var(--crimson-glow); margin-bottom:8px; }
+  .wc-title{ font-family:'Cormorant Garamond', serif; font-weight:600; font-size:22px; color:var(--ink); line-height:1.15; }
+  .wc-sub{ font-size:12.5px; color:#9b948c; margin-top:6px; line-height:1.5;
+           display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .wc-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .wc-tags span{ font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#cfc8c0; border:1px solid rgba(255,255,255,0.14); border-radius:999px; padding:4px 9px; }
+  @media (max-width: 600px){
+    .work-inner{ padding:70px 16px 50px; }
+    .work-grid{ grid-template-columns:repeat(2, 1fr); gap:12px; }
+    .wc-title{ font-size:17px; } .wc-sub{ display:none; } .work-card .wc-body{ padding:12px; }
+  }
 
   /* Blueey the guide's speech bubble (screen-projected above his head) */
   #guide-bubble{
@@ -571,7 +636,7 @@
   <div id="topbar">
     <div id="title"><span>SHDW<span class="t-red">YI</span></span><span id="mute-btn" title="Toggle sound (M)"></span><span>GALLERY</span></div>
     <div id="nav">
-      <span data-page="about">ABOUT</span><span data-page="skills">SKILLS</span><span data-page="experience">EXPERIENCE</span>
+      <span id="nav-work" title="Every project at a glance">PROJECTS</span><span data-page="about">ABOUT</span><span data-page="skills">SKILLS</span><span data-page="experience">EXPERIENCE</span>
       <span class="nav-cta" data-page="contact">CONTACT</span>
       <div id="toc">
         <div id="toc-btn" title="Gallery index"><span></span><span></span><span></span></div>
@@ -610,6 +675,9 @@
 
 <div id="jump-btn">Jump</div>
 <div id="pov-btn">POV</div>
+
+<!-- Projects: every project as a plain grid (filled from PROJECTS) -->
+<div id="work"></div>
 
 <!-- Full project showcase page — content is rendered from each project's
      `page` object in PROJECTS; nothing in here is hand-written per project -->
@@ -2740,6 +2808,7 @@ function closeProjectPage(){
     document.getElementById('fade').classList.remove('on');
     state = 'explore';
     fadeMusicTo(musicTarget(), MUSIC.duckTime); // restore full volume
+    if(returnToWork){ returnToWork = false; openWork(); }   // opened from Projects: go back there
   }, 300);
 }
 
@@ -2926,7 +2995,55 @@ document.querySelectorAll('#nav span[data-page]').forEach(el=>{
   el.addEventListener('click', ()=> openPage(el.dataset.page));
 });
 document.getElementById('page-close').addEventListener('click', closePage);
-addEventListener('keydown', e=>{ if(e.key === 'Escape' && pageOpen) closePage(); });
+addEventListener('keydown', e=>{ if(e.key === 'Escape' && pageOpen && !workOpen) closePage(); });
+
+// ---------- Projects: every project as a plain grid ----------
+// For visitors who'd rather not walk the 3D hall (or whose device struggles):
+// one tap opens any project's page; closing that page comes back here.
+const workEl = document.getElementById('work');
+let workOpen = false, returnToWork = false;
+workEl.innerHTML = `<div class="work-inner">
+  <div class="work-head">
+    <div>
+      <div class="work-eyebrow">SHDWYI — Portfolio</div>
+      <div class="work-title">Projects</div>
+      <div class="work-sub">Every project in the gallery at a glance — pick one to see the full story.</div>
+    </div>
+    <div class="work-back" id="work-back">← Back to the gallery</div>
+  </div>
+  <div class="work-grid">${PROJECTS.map((p, i) => `
+    <div class="work-card" data-i="${i}">
+      <div class="wc-img" style="background-image:url('${p.art}')" role="img" aria-label="${esc(p.title)}"></div>
+      <div class="wc-body">
+        <div class="wc-num">${String(i + 1).padStart(2, '0')} · ${esc((p.page && p.page.eyebrow) || p.tags[0] || '')}</div>
+        <div class="wc-title">${esc(p.title)}</div>
+        <div class="wc-sub">${esc(p.subtitle || '')}</div>
+        <div class="wc-tags">${(p.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>
+      </div>
+    </div>`).join('')}
+  </div>
+</div>`;
+function openWork(){
+  if(pageOpen && !workOpen) closePage();
+  workOpen = true; pageOpen = true;                 // pauses walking + the living paintings underneath
+  Object.keys(keys).forEach(k => keys[k] = false);
+  document.getElementById('prompt').classList.remove('show');
+  workEl.classList.add('show');
+}
+function closeWork(){
+  workOpen = false; pageOpen = false;
+  workEl.classList.remove('show');
+}
+document.getElementById('nav-work').addEventListener('click', openWork);
+document.getElementById('work-back').addEventListener('click', closeWork);
+workEl.addEventListener('click', e => {
+  const card = e.target.closest('.work-card');
+  if(!card) return;
+  returnToWork = true;
+  closeWork();
+  openPanel(PROJECTS[+card.dataset.i]);
+});
+addEventListener('keydown', e => { if(e.key === 'Escape' && workOpen) closeWork(); });
 
 // ---------- Touch UI wiring ----------
 // the prompt doubles as the interact button — tapping (or clicking) it enters the work
@@ -2967,14 +3084,20 @@ if(IS_TOUCH){
 // ---------- Gallery index: hamburger dropdown → teleport to a painting ----------
 const tocEl = document.getElementById('toc');
 const tocList = document.getElementById('toc-list');
-tocList.innerHTML = '<div class="toc-label">Gallery Index</div>' + PROJECTS.map((p,i)=>
+tocList.innerHTML = '<div class="toc-item toc-work" data-work="1"><b>▦</b>Projects — quick view</div>' +
+  '<div class="toc-label">Gallery Index</div>' + PROJECTS.map((p,i)=>
   `<div class="toc-item" data-i="${i}"><b>${String(i+1).padStart(2,'0')}</b>${esc(p.title)}</div>`).join('');
-document.getElementById('toc-btn').addEventListener('click', ()=> tocEl.classList.toggle('open'));
+document.getElementById('toc-btn').addEventListener('click', ()=>{
+  tocEl.classList.toggle('open');
+  // on phones the list is a fixed full-width panel: drop it just below the button
+  if(innerWidth <= 600) tocList.style.top = (document.getElementById('toc-btn').getBoundingClientRect().bottom + 10) + 'px';
+});
 document.addEventListener('click', e=>{ if(!tocEl.contains(e.target)) tocEl.classList.remove('open'); });
 tocList.addEventListener('click', e=>{
   const item = e.target.closest('.toc-item');
   if(!item) return;
   tocEl.classList.remove('open');
+  if(item.dataset.work) return openWork();
   teleportToPainting(+item.dataset.i);
 });
 
@@ -3025,7 +3148,7 @@ let povHintShown = false;
 const GLITCH_SELECTOR = [
   '#nav span', '.toc-item', '#prompt', '.panel-label', '#touch-next', '#touch-sky',
   '#page-close', '.contact-line a', '.c-form button',
-  '.pp-back', '.pp-btn', '.pp-nav a'
+  '.pp-back', '.pp-btn', '.pp-nav a', '.work-back', '.load-alt'
 ].join(', ');
 const GLITCH_UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&$*+=<>/';
 const GLITCH_LOWER = 'abcdefghijklmnopqrstuvwxyz0123456789#%&$*+=<>/';
@@ -3274,7 +3397,9 @@ let entered = false;
 const loadingEl = document.getElementById('loading');
 setTimeout(()=>{
   loadingEl.classList.add('ready');
-  loadingEl.innerHTML = '<div><div class="load-title">SHDW<span>YI</span></div><div class="load-sub">welcome to the shadow gallery</div><div class="load-hint">click to enter</div></div>';
+  loadingEl.innerHTML = '<div><div class="load-title">SHDW<span>YI</span></div><div class="load-sub">welcome to the shadow gallery</div><div class="load-hint">' +
+    (IS_TOUCH ? 'tap' : 'click') + ' to enter</div><span class="load-alt" id="load-alt">or browse projects →</span></div>';
+  document.getElementById('load-alt').addEventListener('click', e => { e.stopPropagation(); enterGallery(); openWork(); });
 }, 600);
 function enterGallery(){
   if(entered) return;
