@@ -625,6 +625,20 @@
     overflow:hidden; text-overflow:ellipsis;
   }
   #track-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* big "you're in first person — press F" prompt, shown for a few seconds on entry */
+  #pov-intro{
+    position:fixed; left:50%; top:34%; transform:translate(-50%, 10px); z-index:12; text-align:center;
+    padding:22px 34px 20px; border-radius:16px; pointer-events:none; opacity:0;
+    background:rgba(10,11,17,0.58); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.12);
+    transition:opacity 0.6s ease, transform 0.6s ease; width:max-content; max-width:90vw;
+  }
+  #pov-intro .pi-title, #pov-intro .pi-sub{ white-space:nowrap; }
+  @media (max-width: 420px){ #pov-intro .pi-sub{ font-size:10.5px; letter-spacing:0.14em; } }
+  #pov-intro.show{ opacity:1; transform:translate(-50%, 0); }
+  #pov-intro .pi-title{ font-family:'Cormorant Garamond', serif; font-weight:600; font-size:32px; color:var(--ink); letter-spacing:0.06em; }
+  #pov-intro .pi-sub{ margin-top:10px; font-size:12px; letter-spacing:0.2em; text-transform:uppercase; color:#c4beb7; }
+  #pov-intro .key{ margin:0 4px; }
 </style>
 </head>
 <body>
@@ -671,6 +685,7 @@
 <div id="joystick"><div id="joystick-knob"></div></div>
 
 <div id="track-toast"></div>
+<div id="pov-intro"><div class="pi-title">First person</div><div class="pi-sub">Press <span class="key">F</span> to switch your point of view</div></div>
 <div id="guide-bubble"></div>
 
 <div id="jump-btn">Jump</div>
@@ -2555,7 +2570,9 @@ function updateMovement(dt){
 }
 
 // ---------- POV toggle (third person orbit ⇄ first person eyes) ----------
-let firstPerson = false, camSnap = false;
+// the visit starts in first person (with a big "press F" prompt on entry)
+let firstPerson = true, camSnap = true;
+character.visible = false;
 const FP_EYE = 2.0;   // eye height in first person (matches the head)
 function togglePOV(){
   if(state !== 'explore' || pageOpen) return;
@@ -3139,7 +3156,7 @@ function teleportToPainting(i){
     fade.classList.remove('on');
   }, 180);
 }
-let povHintShown = false;
+let povHintShown = true;   // the visit already starts in first person, with its own prompt
 
 // ---------- Glitch-decode hover on interactive text ----------
 // Hovering any of these scrambles its letters into random glyphs, then locks
@@ -3407,6 +3424,15 @@ function enterGallery(){
   startMusic();
   loadingEl.style.opacity = 0;
   setTimeout(()=> loadingEl.style.display = 'none', 850);
+  showPovIntro();
+}
+// "You're in first person — press F to switch" for ~3s once the gallery appears
+function showPovIntro(){
+  const el = document.getElementById('pov-intro');
+  if(!el || !firstPerson) return;
+  if(IS_TOUCH) el.querySelector('.pi-sub').innerHTML = 'Tap <span class="key">POV</span> to switch your point of view';
+  setTimeout(()=> el.classList.add('show'), 700);                   // as the entry screen fades away
+  setTimeout(()=> el.classList.remove('show'), 700 + 3200);
 }
 loadingEl.addEventListener('click', enterGallery);
 addEventListener('keydown', function onFirstKey(){ enterGallery(); removeEventListener('keydown', onFirstKey); });
