@@ -1045,7 +1045,7 @@ const PROJECTS = [
     // his cracks, his eyes smoulder and glare, the flames rise, embers drift up
     // and he breathes. All procedural.
     animated: {
-      intro: { type: 'ignite', center: [500, 600], dur: 4.4, eyes: [{ x: 427, y: 331, r: 42 }, { x: 578, y: 331, r: 42 }] },
+      intro: { type: 'ignite', center: [500, 600], dur: 4.4, range: 14, eyes: [{ x: 427, y: 331, r: 42 }, { x: 578, y: 331, r: 42 }] },
       layers: [
         // rising flames + heat haze (his dark body stays still)
         { type: 'currents', amp: 3, scale: 140, speed: 0.25, flow: [[0, 1], [0.25, 1.3]],
@@ -1098,7 +1098,7 @@ const PROJECTS = [
     // you walk up (each page load, or jumping here from the index) he says hello.
     animated: {
       intro: { src: 'assets/projects/blueey/animated/blueey-hello.mp4', fit: { x: 1, y: -99, scale: 0.921 },
-               poster: 'art', lazy: true, fadeIn: 0.25, fade: 0.35 },
+               poster: 'art', lazy: true, fadeIn: 0.25, fade: 0.35, range: 14 },
       layers: [
         { type: 'flutter', anchor: [300, 700], reach: 230, amp: 9, wavelength: 3000, speed: 2.2, flap: { every: [5, 9], dur: 0.8 },
           areas: [{ poly: [[75,480],[300,520],[330,700],[320,960],[200,975],[75,820]], feather: 14 }] },
@@ -2280,20 +2280,105 @@ const BLUEEY_TOUR = {
   waitRadius: 12     // how close the player must be before he speaks
 };
 
-// --- pedestals: one beside each painting ---
-const pedestalGeo = new THREE.CylinderGeometry(0.5, 0.58, 0.9, 20);
-const pedestalMat = new THREE.MeshStandardMaterial({ color: 0x1c1a20, roughness: 0.4, metalness: 0.35 });
+// --- pedestals: carved marble stands, one beside each painting ---
+// The shape is built in code: an 8-sided profile measured off the reference
+// photo. The carving is a colour + normal atlas cut from that same photo
+// (assets/textures/stand-*.webp), so all 8 stands share 2 small textures.
+const STAND = {
+  height: 1.05,
+  // atlas rows as [v bottom, v top]
+  rows: { marble:[0.93799,1.0], block:[0.86328,0.93701], bead:[0.81055,0.8623], molding:[0.77734,0.80957],
+          shaft:[0.18066,0.77637], capital:[0.05273,0.17969], cornice:[0.02344,0.05176], slab:[0.00049,0.02246] },
+  // bottom → top: [top y px, top face width px, bottom face width px, atlas row], measured on the photo
+  // (its floor line is y=1290; each band's bottom is the previous band's top)
+  bottomPx: 1290,
+  bands: [
+    [1180, 278, 278, 'block'],
+    [1105, 262, 270, 'bead'],
+    [1060, 222, 262, 'molding'],
+    [ 372, 215, 215, 'shaft'],
+    [ 195, 290, 235, 'capital'],
+    [ 150, 300, 296, 'cornice'],
+    [ 105, 340, 340, 'slab']
+  ]
+};
+function buildStandGeometry(){
+  const top = STAND.bands[STAND.bands.length-1][0];
+  const s = STAND.height / (STAND.bottomPx - top);
+  const Y = py => (STAND.bottomPx - py) * s;
+  const R = wpx => wpx * s / (2*Math.tan(Math.PI/8)) / Math.cos(Math.PI/8);   // face width → corner radius
+  const P = (a, r, y) => [Math.sin(a)*r, y, Math.cos(a)*r];
+  const pos = [], uv = [];
+  // one ring of 8 flat faces; a ring with yb === yt is a ledge (faces up or down by itself)
+  function ring(yb, rb, yt, rt, vb, vt){
+    for(let k = 0; k < 8; k++){
+      const a0 = (k*45 - 22.5)*Math.PI/180, a1 = (k*45 + 22.5)*Math.PI/180;
+      const BL = P(a0, rb, yb), BR = P(a1, rb, yb), TR = P(a1, rt, yt), TL = P(a0, rt, yt);
+      pos.push(...BL, ...BR, ...TR, ...BL, ...TR, ...TL);
+      uv.push(0,vb, 1,vb, 1,vt, 0,vb, 1,vt, 0,vt);
+    }
+  }
+  const m = STAND.rows.marble, ledgeV = [m[0], m[0] + 0.012];
+  let yPrev = STAND.bottomPx, rPrev = null;
+  STAND.bands.forEach(([yTopPx, wTop, wBot, row])=>{
+    const yb = Y(yPrev), yt = Y(yTopPx), rb = R(wBot), rt = R(wTop), v = STAND.rows[row];
+    if(rPrev !== null && Math.abs(rPrev - rb) > 1e-4) ring(yb, rPrev, yb, rb, ledgeV[0], ledgeV[1]);
+    ring(yb, rb, yt, rt, v[0], v[1]);
+    yPrev = yTopPx; rPrev = rt;
+  });
+  // top cap: marble, planar-mapped
+  const yTop = Y(yPrev), rTop = rPrev, vMid = (m[0] + m[1]) / 2, vH = (m[1] - m[0]) / 2;
+  for(let k = 0; k < 8; k++){
+    const a0 = (k*45 - 22.5)*Math.PI/180, a1 = (k*45 + 22.5)*Math.PI/180;
+    const A = P(a0, rTop, yTop), B = P(a1, rTop, yTop);
+    pos.push(0, yTop, 0, ...A, ...B);
+    uv.push(0.5, vMid, 0.5 + A[0]/(2*rTop), vMid + A[2]/rTop*vH, 0.5 + B[0]/(2*rTop), vMid + B[2]/rTop*vH);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();   // non-indexed → crisp flat faces
+  return g;
+}
+const standColorTex = texLoader.load('assets/textures/stand-color.webp');
+const standNormalTex = texLoader.load('assets/textures/stand-normal.webp');
+standColorTex.anisotropy = standNormalTex.anisotropy = 4;
+const pedestalGeo = buildStandGeometry();
+const pedestalMat = new THREE.MeshStandardMaterial({
+  // aged, darker marble: a deep warm tint plus stronger relief, so it sits in the
+  // gallery's mood instead of glowing white (and hides the flat-texture tricks)
+  color: 0x9a9184, map: standColorTex, normalMap: standNormalTex, normalScale: new THREE.Vector2(1.6, 1.6),
+  roughness: 0.6, metalness: 0.0
+});
 const pedestalTops = [];   // world position of each pedestal's top face
+// all 8 stands draw in one call (instanced), plus one call for their soft floor shadows
+const pedestals = new THREE.InstancedMesh(pedestalGeo, pedestalMat, paintingGroups.length);
+const standShadowTex = (()=>{
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(64,64,0, 64,64,64);
+  gr.addColorStop(0, 'rgba(0,0,0,0.85)'); gr.addColorStop(0.45, 'rgba(0,0,0,0.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = gr; x.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+})();
+const standShadows = new THREE.InstancedMesh(
+  new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ map: standShadowTex, transparent: true, depthWrite: false }),
+  paintingGroups.length);
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _up = new THREE.Vector3(0,1,0);
 paintingGroups.forEach((g, i)=>{
   const rotY = g.rotation.y;
   const n = new THREE.Vector3(Math.sin(rotY), 0, Math.cos(rotY));
   const t = new THREE.Vector3(n.z, 0, -n.x);
   const base = g.userData.worldPos.clone().addScaledVector(n, 2.4).addScaledVector(t, 2.2);
-  const ped = new THREE.Mesh(pedestalGeo, pedestalMat);
-  ped.position.set(base.x, 0.45, base.z);
-  scene.add(ped);
-  pedestalTops[i] = new THREE.Vector3(base.x, 0.9, base.z);
+  _q.setFromAxisAngle(_up, rotY);   // a carved face looks the same way as the painting
+  pedestals.setMatrixAt(i, _m.compose(new THREE.Vector3(base.x, 0, base.z), _q, new THREE.Vector3(1,1,1)));
+  const d = STAND.height * 1.25;    // shadow footprint, a bit wider than the base
+  standShadows.setMatrixAt(i, _m.compose(new THREE.Vector3(base.x, 0.012, base.z), _q, new THREE.Vector3(d,1,d)));
+  pedestalTops[i] = new THREE.Vector3(base.x, STAND.height, base.z);
 });
+pedestals.instanceMatrix.needsUpdate = standShadows.instanceMatrix.needsUpdate = true;
+standShadows.renderOrder = -1;
+scene.add(standShadows, pedestals);
 
 // --- the little elephant himself ---
 const blueey = new THREE.Group();
