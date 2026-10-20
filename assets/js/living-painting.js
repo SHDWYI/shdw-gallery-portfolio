@@ -107,13 +107,74 @@
 
   function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 
+  // Canvas `ctx.filter` (blur etc.) is silently ignored by Safari on iPhone/iPad,
+  // which left every soft mask hard-edged there (and a ghost behind Blueey's
+  // balloon). Setup-time blurs go through blurredCopy(), which falls back to a
+  // JS gaussian (3 box passes, premultiplied alpha) when the filter isn't real.
+  const FILTER_OK = (() => {
+    try {
+      const x = makeCanvas(9, 9).getContext('2d', { willReadFrequently: true });
+      x.filter = 'blur(2px)'; x.fillStyle = '#fff'; x.fillRect(4, 4, 1, 1);
+      return x.getImageData(1, 4, 1, 1).data[3] > 0;
+    } catch (e) { return false; }
+  })();
+  function boxBlurRGBA(d, w, h, sigma) {
+    const r = Math.max(1, Math.round(Math.sqrt(sigma * sigma + 0.25) - 0.5)), n = w * h;
+    let a = new Float32Array(n * 4), b = new Float32Array(n * 4);
+    for (let i = 0; i < n * 4; i += 4) { const al = d[i + 3] / 255; a[i] = d[i] * al; a[i + 1] = d[i + 1] * al; a[i + 2] = d[i + 2] * al; a[i + 3] = d[i + 3]; }
+    const inv = 1 / (2 * r + 1);
+    const pass = (src, dst, len, lines, step, lineStep) => {   // one sliding-window box blur along one axis, zeros outside
+      for (let l = 0; l < lines; l++) {
+        const base = l * lineStep;
+        for (let c = 0; c < 4; c++) {
+          let acc = 0;
+          for (let k = 0; k <= r && k < len; k++) acc += src[base + k * step + c];
+          for (let k = 0; k < len; k++) {
+            dst[base + k * step + c] = acc * inv;
+            if (k + r + 1 < len) acc += src[base + (k + r + 1) * step + c];
+            if (k - r >= 0) acc -= src[base + (k - r) * step + c];
+          }
+        }
+      }
+    };
+    for (let it = 0; it < 3; it++) {
+      pass(a, b, w, h, 4, w * 4); [a, b] = [b, a];
+      pass(a, b, h, w, w * 4, 4); [a, b] = [b, a];
+    }
+    for (let i = 0; i < n * 4; i += 4) {
+      const al = a[i + 3], k = al > 0.001 ? 255 / al : 0;
+      d[i] = a[i] * k; d[i + 1] = a[i + 1] * k; d[i + 2] = a[i + 2] * k; d[i + 3] = al;
+    }
+  }
+  // a blurred copy of a canvas/image (same size); identical to ctx.filter='blur()' where that works
+  function blurredCopy(src, sigma, w, h) {
+    w = w || src.width; h = h || src.height;
+    const c = makeCanvas(w, h), x = c.getContext('2d', { willReadFrequently: true });
+    if (FILTER_OK) { x.filter = `blur(${sigma}px)`; x.drawImage(src, 0, 0); x.filter = 'none'; return c; }
+    if (sigma <= 0) { x.drawImage(src, 0, 0); return c; }
+    // big blurs are smooth anyway: do them on a smaller copy (much faster on phones), then scale back up
+    const f = sigma >= 6 ? Math.min(8, Math.floor(sigma / 3)) : 1, sw = Math.ceil(w / f), sh = Math.ceil(h / f);
+    const sm = f > 1 ? makeCanvas(sw, sh) : c, sx = f > 1 ? sm.getContext('2d', { willReadFrequently: true }) : x;
+    sx.drawImage(src, 0, 0, w, h, 0, 0, w / f, h / f);
+    const id = sx.getImageData(0, 0, sw, sh); boxBlurRGBA(id.data, sw, sh, sigma / f); sx.putImageData(id, 0, 0);
+    if (f > 1) { x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(sm, 0, 0, sw, sh, 0, 0, sw * f, sh * f); }
+    return c;
+  }
+
   function maskFrom(areas, W, H) {
     const c = makeCanvas(W, H), m = c.getContext('2d');
-    m.fillStyle = '#fff';
     areas.forEach(a => {
-      m.filter = `blur(${a.feather || DEFAULT_FEATHER}px)`;
-      if (a.poly) { m.beginPath(); a.poly.forEach(([x, y], i) => i ? m.lineTo(x, y) : m.moveTo(x, y)); m.closePath(); m.fill(); }
-      else m.fillRect(a[0], a[1], a[2], a[3]);
+      const f = a.feather || DEFAULT_FEATHER, pad = Math.ceil(f * 3);
+      let x0, y0, x1, y1;
+      if (a.poly) { x0 = Math.min(...a.poly.map(p => p[0])); x1 = Math.max(...a.poly.map(p => p[0])); y0 = Math.min(...a.poly.map(p => p[1])); y1 = Math.max(...a.poly.map(p => p[1])); }
+      else { x0 = a[0]; y0 = a[1]; x1 = a[0] + a[2]; y1 = a[1] + a[3]; }
+      x0 = Math.floor(x0) - pad; y0 = Math.floor(y0) - pad;
+      const sw = Math.ceil(x1) + pad - x0, sh = Math.ceil(y1) + pad - y0;
+      const sharp = makeCanvas(sw, sh), sx = sharp.getContext('2d');   // the shape alone, in its own padded box
+      sx.fillStyle = '#fff'; sx.translate(-x0, -y0);
+      if (a.poly) { sx.beginPath(); a.poly.forEach(([x, y], i) => i ? sx.lineTo(x, y) : sx.moveTo(x, y)); sx.closePath(); sx.fill(); }
+      else sx.fillRect(a[0], a[1], a[2], a[3]);
+      m.drawImage(blurredCopy(sharp, f), x0, y0);
     });
     return c;
   }
@@ -353,8 +414,8 @@
       const d = s.getImageData(bx, by, bw, bh), kd = new ImageData(bw, bh);
       for (let i = 0; i < d.data.length; i += 4) if (0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2] < (L.keep.maxLum || 45)) kd.data[i + 3] = 255;
       const raw = makeCanvas(W, H); raw.getContext('2d').putImageData(kd, bx, by);
-      const k = keep.getContext('2d'); k.filter = `blur(${L.keep.grow || 6}px)`;
-      for (let n = 0; n < 3; n++) k.drawImage(raw, 0, 0);
+      const k = keep.getContext('2d'), soft = blurredCopy(raw, L.keep.grow || 6);
+      for (let n = 0; n < 3; n++) k.drawImage(soft, 0, 0);
     }
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
     const prog = gl.createProgram();
@@ -386,7 +447,7 @@
   // ---- twinkle: the painting's own stars (sharp bright points) ----
   function buildTwinkle(L, img, W, H) {
     const a = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); a.drawImage(img, 0, 0);
-    const b = makeCanvas(W, H).getContext('2d', { willReadFrequently: true }); b.filter = 'blur(6px)'; b.drawImage(img, 0, 0);
+    const b = blurredCopy(img, 6, W, H).getContext('2d', { willReadFrequently: true });
     const d = a.getImageData(0, 0, W, H).data, bl = b.getImageData(0, 0, W, H).data;
     const area = L.areas ? L.mask.getContext('2d').getImageData(0, 0, W, H).data : null;
     const lum = (q, i) => 0.299 * q[i] + 0.587 * q[i + 1] + 0.114 * q[i + 2], stars = [];
@@ -524,7 +585,7 @@
       const pc = makeCanvas(bw, bh), pcx = pc.getContext('2d'), pid = pcx.createImageData(bw, bh);
       for (let k = 0; k < n; k++) pid.data[k * 4 + 3] = 255 * pinkM[k];
       pcx.putImageData(pid, 0, 0);
-      nx.filter = 'blur(12px)'; for (let r = 0; r < 4; r++) nx.drawImage(pc, 0, 0);
+      const pcSoft = blurredCopy(pc, 12); for (let r = 0; r < 4; r++) nx.drawImage(pcSoft, 0, 0);
       const nd = nx.getImageData(0, 0, bw, bh).data;
       for (let i = 0, k = 0; k < n; k++, i += 4) {
         const dd = Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
@@ -543,7 +604,7 @@
       L.sprite = spr;
       // 2) where to paint the edit: the balloon's shape grown and feathered
       const grow = makeCanvas(bw, bh), gx = grow.getContext('2d', { willReadFrequently: true });
-      gx.filter = 'blur(11px)'; for (let k = 0; k < 6; k++) gx.drawImage(spr, 0, 0);   // wide enough to take its shadow on his head too
+      const sprSoft = blurredCopy(spr, 11); for (let k = 0; k < 6; k++) gx.drawImage(sprSoft, 0, 0);   // wide enough to take its shadow on his head too
       const gm = gx.getImageData(0, 0, bw, bh).data;
       // 3) what's behind the balloon:
       //    • the pink backdrop: filled in from the real backdrop around it (pull-push:
@@ -554,14 +615,19 @@
       const known = new Float32Array(n);
       for (let i = 0, k = 0; k < n; k++, i += 4) known[k] = gm[i + 3] < 8 && q[i + 2] <= q[i] + 10 ? 1 : 0;   // backdrop clear of the balloon
       const fill = pullPush(p, known, bw, bh);
-      const off = [0, 0, 0]; let cnt = 0;                               // head colour shift
-      for (let i = 0, k = 0; k < n; k++, i += 4) if (gm[i + 3] > 20 && m[k] < 0.05 && q[i + 2] > q[i] + 20) { off[0] += p[i] - q[i]; off[1] += p[i + 1] - q[i + 1]; off[2] += p[i + 2] - q[i + 2]; cnt++; }
-      if (cnt) off.forEach((v, j) => off[j] = v / cnt);
+      // head colour shift: a smooth field, not one average. It is measured on head the
+      // balloon never touched (outside the grown mask, so its shadow doesn't darken it)
+      // and spread inward with pull-push, so the edit meets the art seamlessly all round.
+      const dif = new Float32Array(n * 4), dk = new Float32Array(n);
+      for (let i = 0, k = 0; k < n; k++, i += 4) if (gm[i + 3] < 8 && q[i + 2] > q[i] + 20 && p[i + 2] > p[i] + 20) {
+        dk[k] = 1; dif[i] = p[i] - q[i]; dif[i + 1] = p[i + 1] - q[i + 1]; dif[i + 2] = p[i + 2] - q[i + 2];
+      }
+      const off = pullPush(dif, dk, bw, bh);
       const patch = makeCanvas(bw, bh), px = patch.getContext('2d'), pd = px.createImageData(bw, bh);
       for (let i = 0; i < pd.data.length; i += 4) {
         const head = smoothstep(5, 25, q[i + 2] - q[i]);                // the edit shows blue head here
-        for (let j = 0; j < 3; j++) pd.data[i + j] = fill[i + j] * (1 - head) + (q[i + j] + off[j]) * head;
-        pd.data[i + 3] = gm[i + 3];
+        for (let j = 0; j < 3; j++) pd.data[i + j] = fill[i + j] * (1 - head) + (q[i + j] + off[i + j]) * head;
+        pd.data[i + 3] = Math.min(255, gm[i + 3] * 1.8);   // solid over the balloon and its shadow, soft only at the very edge
       }
       px.putImageData(pd, 0, 0);
       L.patch = patch;
@@ -771,13 +837,13 @@
     tx.putImageData(td, 0, 0);
     // grow the lettering mask a little so the soft edges go too
     const grow = makeCanvas(w, h), gx = grow.getContext('2d');
-    gx.filter = 'blur(2.5px)'; gx.drawImage(txt, 0, 0); gx.drawImage(txt, 0, 0); gx.drawImage(txt, 0, 0); gx.filter = 'none';
+    const txtSoft = blurredCopy(txt, 2.5); gx.drawImage(txtSoft, 0, 0); gx.drawImage(txtSoft, 0, 0); gx.drawImage(txtSoft, 0, 0);
     // 2) background estimate: blur only the non-letter pixels (alpha-normalised)
     const bg = makeCanvas(w, h), bx = bg.getContext('2d');
     bx.drawImage(region, 0, 0); bx.globalCompositeOperation = 'destination-out'; bx.drawImage(grow, 0, 0);
     const fill = makeCanvas(w, h), fx = fill.getContext('2d');
-    fx.filter = 'blur(7px)'; fx.drawImage(bg, 0, 0); fx.filter = 'blur(14px)'; fx.globalCompositeOperation = 'destination-over'; fx.drawImage(bg, 0, 0);
-    fx.filter = 'none'; fx.globalCompositeOperation = 'source-over';
+    fx.drawImage(blurredCopy(bg, 7), 0, 0); fx.globalCompositeOperation = 'destination-over'; fx.drawImage(blurredCopy(bg, 14), 0, 0);
+    fx.globalCompositeOperation = 'source-over';
     const fd = fx.getImageData(0, 0, w, h);                 // colours come back un-premultiplied:
     for (let i = 3; i < fd.data.length; i += 4) fd.data[i] = 255;   // make the estimate fully opaque
     fx.putImageData(fd, 0, 0);
@@ -1261,6 +1327,8 @@
           f.globalAlpha = amount;
           f.drawImage(L.stillMasked, 0, 0);
           // 2) add the bolt back: only the very brightest new detail survives this filter
+          //    (needs ctx.filter — skipped on iPhone/iPad Safari, which ignores it)
+          if (FILTER_OK) {
           const h = L.highlight.getContext('2d');
           h.globalCompositeOperation = 'source-over'; h.globalAlpha = 1;
           h.clearRect(0, 0, W, H);
@@ -1274,6 +1342,7 @@
           f.globalCompositeOperation = 'lighter';
           f.globalAlpha = amount;
           f.drawImage(L.highlight, 0, 0);
+          }
           f.globalCompositeOperation = 'source-over'; f.globalAlpha = 1;
         }
       }
