@@ -712,7 +712,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=15"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=16"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -1011,7 +1011,7 @@ const PROJECTS = [
     // tail sways. She herself stays still.
     animated: {
       intro: { src: 'assets/projects/requiem/animated/requiem-intro.mp4', fit: { x: 1, y: -100, scale: 0.9205 },
-               fade: 0.3, lazy: true },   // she glides into the exact pose only in the last ~0.3s; downloads only when you get near
+               fade: 0.3, lazy: true, range: 20 },   // she glides into the exact pose only in the last ~0.3s; starts as you walk up (20 units)
       layers: [
         { type: 'currents', amp: 2.2, scale: 240, speed: 0.04,
           keep: { box: [455, 640, 240, 660], maxLum: 50, grow: 5 },
@@ -1952,7 +1952,7 @@ function createPainting(proj){
       art.material.emissiveMap = tex;
       art.material.needsUpdate = true;
       // living paintings: motion layers composited over the still (see setupAnimatedArt)
-      if(proj.animated) setupAnimatedArt(proj, img, actx, [(AW-dw)/2, (AH-dh)/2, dw, dh], tex, group);
+      if(proj.animated) setupAnimatedArt(proj, img, actx, [(AW-dw)/2, (AH-dh)/2, dw, dh], tex, group, art.material);
     };
     img.onerror = () => console.info(`No artwork yet for ${proj.title} (${proj.art}) — showing placeholder.`);
     // versioned URL so swapping/replacing an image busts the browser cache —
@@ -1992,13 +1992,18 @@ function createPainting(proj){
 const ANIM_FPS = IS_TOUCH ? 20 : 24;   // frame refreshes per second
 const ANIM_RANGE = 22;     // alive only this close (the index's viewing spot is 16.75 away)…
 const ANIM_VIEW_DOT = 0.6; // …and only while the camera looks at it (within ~53°)
-const INTRO_RANGE = 10;    // an intro starts only when you walk right up to it
+const INTRO_RANGE = 10;    // an intro starts when you walk this close (a project's intro.range overrides)
+// While a painting animates, its frames go to a separate, smaller "live" texture
+// (re-uploaded every frame, no mipmaps) — still sharper than the painting ever
+// appears on screen. The full-quality mipmapped still stays on the GPU untouched,
+// so switching between live and still is just a swap: no re-upload, no hitch.
+const LIVE_SCALE = IS_TOUCH ? 0.55 : 0.65;
 const animatedPaintings = [];
 const _camDir = new THREE.Vector3(), _toArt = new THREE.Vector3();
 // distance across the floor (the paintings hang ~6 units up; height shouldn't count)
 const floorDist = g => Math.hypot(g.userData.worldPos.x - character.position.x, g.userData.worldPos.z - character.position.z);
 
-function setupAnimatedArt(proj, img, actx, coverRect, tex, group){
+function setupAnimatedArt(proj, img, actx, coverRect, tex, group, mat){
   const lp = new LivingPainting(img, proj.animated);
   // redraw the resting state through the same canvas path the animation uses, so the
   // painting doesn't subtly change sharpness when it starts playing (browsers scale an
@@ -2006,34 +2011,48 @@ function setupAnimatedArt(proj, img, actx, coverRect, tex, group){
   actx.clearRect(0, 0, actx.canvas.width, actx.canvas.height);
   actx.drawImage(lp.canvas, ...coverRect);
   tex.needsUpdate = true;
-  animatedPaintings.push({ group, actx, coverRect, tex, lp, playing: false, last: 0, forceIntro: false });
+  const live = document.createElement('canvas');
+  live.width = Math.round(actx.canvas.width * LIVE_SCALE); live.height = Math.round(actx.canvas.height * LIVE_SCALE);
+  const liveTex = new THREE.CanvasTexture(live);
+  liveTex.generateMipmaps = false; liveTex.minFilter = THREE.LinearFilter;
+  animatedPaintings.push({ group, actx, coverRect, tex, mat, lp, live, lctx: live.getContext('2d'), liveTex,
+    liveRect: coverRect.map(v => v * LIVE_SCALE), playing: false, last: 0, forceIntro: false,
+    stillState: lp.intro ? lp.intro.state : null });
+}
+function showLive(p, on){
+  const t = on ? p.liveTex : p.tex;
+  if(p.mat.map !== t){ p.mat.map = t; p.mat.emissiveMap = t; }
+}
+// the still shows how the painting was left: only repaint it (one upload) when that
+// changed — e.g. after an intro, the void/cold stone gives way to the living art
+function refreshStill(p){
+  const s = p.lp.intro ? p.lp.intro.state : null;
+  if(!p.lp.dirty && s === p.stillState) return;
+  p.lp.dirty = false; p.stillState = s;
+  p.actx.drawImage(p.lp.canvas, ...p.coverRect); p.tex.needsUpdate = true;
 }
 
-// the one painting allowed to animate right now (or null)
+// the one painting allowed to animate right now (or null). The one you're facing
+// most squarely wins (distance only breaks near-ties); the current one is sticky —
+// another takes over only when it's clearly ahead — so a view sweeping past the
+// edge between two paintings doesn't flip them on and off
+let currentActive = null;
 function activeAnimatedPainting(){
-  if(state !== 'explore' || pageOpen) return null;
+  if(state !== 'explore' || pageOpen) return (currentActive = null);
   camera.getWorldDirection(_camDir);
-  // the one you're facing most squarely wins (distance only breaks near-ties), so
-  // a closer painting at the edge of the view doesn't steal it from the one ahead
-  let best = null, bestScore = -Infinity;
+  let best = null, bestScore = -Infinity, curScore = -Infinity;
   animatedPaintings.forEach(p => {
-    const d = floorDist(p.group);
-    if(d >= ANIM_RANGE) return;
+    const d = floorDist(p.group), cur = p === currentActive;
+    if(d >= ANIM_RANGE + (cur ? 2 : 0)) return;
     _toArt.copy(p.group.userData.worldPos).sub(camera.position).normalize();
     const dot = _camDir.dot(_toArt);
-    if(dot < ANIM_VIEW_DOT) return;
+    if(dot < ANIM_VIEW_DOT - (cur ? 0.08 : 0)) return;
     const score = dot - 0.25 * d / ANIM_RANGE;
+    if(cur) curScore = score;
     if(score > bestScore){ best = p; bestScore = score; }
   });
-  return best;
-}
-
-// while a painting animates its texture is re-uploaded every frame: skip the mipmap
-// rebuild then (it's close up anyway), and restore full mipmapped quality at rest
-function setLiveTexture(p, live){
-  p.tex.generateMipmaps = !live;
-  p.tex.minFilter = live ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter;
-  p.tex.needsUpdate = true;
+  if(currentActive && curScore > -Infinity && best !== currentActive && bestScore < curScore + 0.12) best = currentActive;
+  return (currentActive = best);
 }
 
 // jumping to a painting from the gallery index replays its intro, if it has one
@@ -2042,7 +2061,7 @@ function replayIntroFor(group){
   if(!p || !p.lp.intro) return;
   p.lp.restartIntro();
   p.forceIntro = true;
-  if(p.playing){ p.playing = false; setLiveTexture(p, false); }   // so the next update starts it afresh
+  if(p.playing){ p.playing = false; p.lp.pause(); showLive(p, false); }   // so the next update starts it afresh
 }
 
 // who the painting is looking at, in its own image terms: gaze -1..1 (left/right,
@@ -2066,24 +2085,23 @@ function updateAnimatedPaintings(now){
   animatedPaintings.forEach(p => {
     let want = p === active;
     const I = p.lp.intro, dist = floorDist(p.group);
-    if(dist < ANIM_RANGE * 1.5) p.lp.prefetch();         // videos download only when you're getting near
-    const close = dist <= INTRO_RANGE || p.forceIntro;
+    if(dist < ANIM_RANGE * (I ? 2 : 1.5)) p.lp.prefetch();   // videos download only as you get near (intros a little earlier)
+    const close = dist <= ((I && I.cfg.range) || INTRO_RANGE) || p.forceIntro;
     if(want && I && I.state === 'waiting' && I.cfg.poster !== 'art' && !close) want = false;   // the void waits for you to come close
     if(I && I.state !== 'waiting') p.forceIntro = false;
     if(want !== p.playing){
       p.playing = want;
-      if(want) p.lp.play(); else p.lp.pause();
-      setLiveTexture(p, want);
+      if(want){ p.lp.play(); p.last = 0; }
+      else { p.lp.pause(); showLive(p, false); refreshStill(p); }
     }
     if(p.playing && I && I.state === 'waiting' && I.cfg.poster === 'art' && close) p.lp.startIntro();   // e.g. Blueey's hello
     if(p.playing) updateLookers(p, dist);
-    if(!p.playing && p.lp.dirty){                       // e.g. an intro's first frame arrived while far away
-      p.lp.dirty = false; p.actx.drawImage(p.lp.canvas, ...p.coverRect); p.tex.needsUpdate = true;
-    }
-    if(!p.playing || now - p.last < 1000 / ANIM_FPS || !p.lp.ready()) return;
+    if(!p.playing){ if(p.lp.dirty) refreshStill(p); return; }   // e.g. an intro's first frame arrived while far away
+    if(now - p.last < 1000 / ANIM_FPS || !p.lp.ready()) return;
     p.last = now;
-    p.actx.drawImage(p.lp.render(now), ...p.coverRect);   // same placement as the static art
-    p.tex.needsUpdate = true;
+    p.lctx.drawImage(p.lp.render(now), ...p.liveRect);       // same placement as the still, at live size
+    p.liveTex.needsUpdate = true;
+    showLive(p, true);                                        // (only once it has a real frame in it)
   });
 }
 

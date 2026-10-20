@@ -1245,10 +1245,15 @@
       f.drawImage(L.mask, 0, 0);
 
       if (L.flash) {
-        // how strong is this frame's flash? (sky brightness vs the still's)
-        const p = L.probe.getContext('2d');
-        p.clearRect(0, 0, 64, 100); p.drawImage(L.frame, 0, 0, 64, 100);
-        const rise = (avgLuma(L.probe) - L.baseLuma) / Math.max(1, L.baseLuma);
+        // how strong is this frame's flash? (sky brightness vs the still's). Reading
+        // pixels back stalls the GPU, so measure only every 3rd frame and reuse it.
+        L.flashN = (L.flashN || 0) + 1;
+        if (L.rise == null || L.flashN % 3 === 1) {
+          const p = L.probe.getContext('2d');
+          p.clearRect(0, 0, 64, 100); p.drawImage(L.frame, 0, 0, 64, 100);
+          L.rise = (avgLuma(L.probe) - L.baseLuma) / Math.max(1, L.baseLuma);
+        }
+        const rise = L.rise;
         const amount = L.flash.dim * Math.min(1, Math.max(0, (rise - 0.08) / 0.5));
         if (amount > 0.01) {
           // 1) pull the broad glow back toward the dark sky
