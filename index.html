@@ -712,7 +712,10 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/living-painting.js?v=19"></script>
+<!-- KTX2 (GPU-compressed textures): three.js r135's standalone loader + Basis transcoder, works with r128 -->
+<script src="assets/js/vendor/WorkerPool.js"></script>
+<script src="assets/js/vendor/KTX2Loader.js"></script>
+<script src="assets/js/living-painting.js?v=20"></script>
 <script src="assets/js/ambience.js?v=4"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
@@ -1232,15 +1235,52 @@ const MARBLE_COLOR_URL = 'assets/textures/marble-color.webp';   // (was embedded
 const MARBLE_BUMP_URL = 'assets/textures/marble-bump.webp';   // (was embedded as base64)
 
 const texLoader = new THREE.TextureLoader();
+
+// ---------- KTX2: GPU-compressed textures ----------
+// Each fixed texture (floor, frames, stands, skies) has a .ktx2 twin next to its .webp.
+// The graphics card keeps KTX2 compressed (Basis Universal, transcoded in a worker to
+// whatever the device supports: BC on desktops, ETC/ASTC on phones), so it takes about
+// 1/4–1/8 of the memory of a decoded WebP and uploads without stalling the main thread.
+// If KTX2 can't load (old browser, missing file), the WebP is used instead.
+const ktx2Loader = (()=>{
+  try {
+    if(!THREE.KTX2Loader || !THREE.WorkerPool || /[?&]noktx\b/.test(location.search)) return null;   // ?noktx = WebP only (for comparing)
+    const l = new THREE.KTX2Loader();
+    l.setTranscoderPath('assets/js/vendor/');
+    l.setWorkerLimit(IS_TOUCH ? 1 : 2);
+    return l.detectSupport(renderer);
+  } catch(e){ return null; }
+})();
+const TEX_MAP_KEYS = ['map', 'normalMap', 'bumpMap', 'roughnessMap', 'emissiveMap'];
+// load `url` (a .webp) as KTX2 when possible. `setup(tex)` applies wrap/repeat/etc.;
+// it runs again once the data arrives (the KTX2 loader replaces the texture's settings).
+function loadTexture(url, setup, onLoad){
+  const done = t => { t.encoding = THREE.LinearEncoding;   // same colour handling as the WebP had
+                      if(setup) setup(t); t.needsUpdate = true; if(onLoad) onLoad(t); };
+  if(!ktx2Loader){ const t = texLoader.load(url, onLoad); if(setup) setup(t); return t; }
+  let fellBack = false;
+  const tex = ktx2Loader.load(url.replace(/\.webp$/, '.ktx2'), done, undefined, () => {
+    if(fellBack) return; fellBack = true;
+    texLoader.load(url, t => {                               // swap the WebP in wherever the KTX2 was used
+      if(setup) setup(t);
+      scene.traverse(o => { const ms = o.material ? [].concat(o.material) : [];
+        ms.forEach(m => TEX_MAP_KEYS.forEach(k => { if(m[k] === tex){ m[k] = t; m.needsUpdate = true; } })); });
+      if(onLoad) onLoad(t);
+    });
+  });
+  if(setup) setup(tex);
+  return tex;
+}
+
 const MARBLE_ROUGH_URL = 'assets/textures/marble-rough.webp';   // (was embedded as base64)
-const marbleColorTex = texLoader.load(MARBLE_COLOR_URL);
-const marbleBumpTex = texLoader.load(MARBLE_BUMP_URL);
-const marbleRoughTex = texLoader.load(MARBLE_ROUGH_URL);
-[marbleColorTex, marbleBumpTex, marbleRoughTex].forEach(t => {
+const marbleSetup = t => {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(9, 15);
   t.anisotropy = 8;
-});
+};
+const marbleColorTex = loadTexture(MARBLE_COLOR_URL, marbleSetup);
+const marbleBumpTex = loadTexture(MARBLE_BUMP_URL, marbleSetup);
+const marbleRoughTex = loadTexture(MARBLE_ROUGH_URL, marbleSetup);
 
 const floorMat = new THREE.MeshStandardMaterial({
   map: marbleColorTex,
@@ -1406,9 +1446,11 @@ const SKY = {
   // Skies the switcher cycles through (K key, or the Sky button on touch). Brightness
   // is per sky because each image is exposed differently; < 1 dims it toward night.
   skies: [
-    { name: 'Starry Night',   url: 'assets/sky/starry-night.webp',  brightness: 0.28 },
-    { name: 'Crimson Nebula', url: 'assets/sky/space.webp',         brightness: 0.28 },
-    { name: 'Moonlit Night',  url: 'assets/sky/moonlit-night.webp', brightness: 0.28 }
+    // horizon: the band's average colour (0–255), measured once — compressed textures
+    // can't be read back, so the fog colour is stored here instead
+    { name: 'Starry Night',   url: 'assets/sky/starry-night.webp',  brightness: 0.28, horizon: [77.2, 103.1, 102.5] },
+    { name: 'Crimson Nebula', url: 'assets/sky/space.webp',         brightness: 0.28, horizon: [72.6, 61.4, 59.6] },
+    { name: 'Moonlit Night',  url: 'assets/sky/moonlit-night.webp', brightness: 0.28, horizon: [63.0, 64.9, 75.1] }
   ],
   start: 0,                       // sky shown on a visitor's first visit (their last pick is remembered)
   radius: 90,                     // must stay inside the camera's far plane (100)
@@ -1478,13 +1520,17 @@ function applySky(tex, def){
   skyMesh.material.needsUpdate = true;
 
   // fog + backdrop take the average colour of the horizon band
-  const c = document.createElement('canvas'); c.width = 64; c.height = 32;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(tex.image, 0, 0, 64, 32);
-  const px = ctx.getImageData(0, 13, 64, 6).data;
-  let rr = 0, gg = 0, bb = 0;
-  for(let i = 0; i < px.length; i += 4){ rr += px[i]; gg += px[i+1]; bb += px[i+2]; }
-  const cnt = px.length / 4;
+  let rr, gg, bb, cnt = 1;
+  if(def.horizon) [rr, gg, bb] = def.horizon;
+  else {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 32;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(tex.image, 0, 0, 64, 32);
+    const px = ctx.getImageData(0, 13, 64, 6).data;
+    rr = gg = bb = 0;
+    for(let i = 0; i < px.length; i += 4){ rr += px[i]; gg += px[i+1]; bb += px[i+2]; }
+    cnt = px.length / 4;
+  }
   const f = b * SKY.fogTint;
   const horizon = new THREE.Color(rr/cnt/255 * f, gg/cnt/255 * f, bb/cnt/255 * f);
   scene.fog.color.copy(horizon);
@@ -1516,10 +1562,14 @@ function setSky(i, announce){
   };
   if(skyTextures[def.url]) return show(skyTextures[def.url]);
   if(announce) showToast('☾ Loading sky: ' + def.name + '…');
-  new THREE.TextureLoader().load(def.url,
+  const fromWebp = () => new THREE.TextureLoader().load(def.url,
     tex => { skyTextures[def.url] = tex; show(tex); },
     undefined,
     () => { console.info('No sky image at ' + def.url); if(announce) showToast('Sky not found: ' + def.name); });
+  if(!ktx2Loader) return fromWebp();
+  ktx2Loader.load(def.url.replace(/\.webp$/, '.ktx2'),
+    tex => { tex.encoding = THREE.LinearEncoding; tex.needsUpdate = true; skyTextures[def.url] = tex; show(tex); },
+    undefined, fromWebp);
 }
 
 function nextSky(){
@@ -1554,10 +1604,9 @@ const RANK_Z = [8, -4, -18, -34];
 const FRAME_COLOR_URL = 'assets/textures/frame-color.webp';   // (was embedded as base64)
 const FRAME_NORMAL_URL = 'assets/textures/frame-normal.webp';   // (was embedded as base64)
 const frameTexLoader = new THREE.TextureLoader();
-const sharedFrameColorTex = frameTexLoader.load(FRAME_COLOR_URL);
-const sharedFrameNormalTex = frameTexLoader.load(FRAME_NORMAL_URL);
-sharedFrameColorTex.anisotropy = 8;
-sharedFrameNormalTex.anisotropy = 8;
+const frameSetup = t => { t.anisotropy = 8; };
+const sharedFrameColorTex = loadTexture(FRAME_COLOR_URL, frameSetup);
+const sharedFrameNormalTex = loadTexture(FRAME_NORMAL_URL, frameSetup);
 
 // =====================================================================
 // FRAME SYSTEM — procedural, parameter-driven
@@ -1994,30 +2043,33 @@ const ANIM_FPS = IS_TOUCH ? 20 : 24;   // frame refreshes per second
 const ANIM_RANGE = 22;     // alive only this close (the index's viewing spot is 16.75 away)…
 const ANIM_VIEW_DOT = 0.6; // …and only while the camera looks at it (within ~53°)
 const INTRO_RANGE = 10;    // an intro starts when you walk this close (a project's intro.range overrides)
-// While a painting animates, its frames go to a separate, smaller "live" texture
-// (re-uploaded every frame, no mipmaps) — still sharper than the painting ever
-// appears on screen. The full-quality mipmapped still stays on the GPU untouched,
-// so switching between live and still is just a swap: no re-upload, no hitch.
-const LIVE_SCALE = IS_TOUCH ? 0.55 : 0.65;
+// While a painting animates, the engine draws it at PAINT_SCALE of the art's size
+// (it works in art coordinates, so the motion is identical) — about half the pixels
+// to composite — and that canvas IS the live texture (re-uploaded each frame, no
+// mipmaps, no extra copy; the frame's cover-crop is done with UV offset/repeat).
+// Measured against full resolution at 1080p this is as sharp as the old setup; 0.55
+// was visibly soft up close. The full-quality mipmapped still stays on the GPU, so
+// switching between live and still is just a swap: no re-upload, no hitch.
+const PAINT_SCALE = IS_TOUCH ? 0.6 : 0.7;
 const animatedPaintings = [];
 const _camDir = new THREE.Vector3(), _toArt = new THREE.Vector3();
 // distance across the floor (the paintings hang ~6 units up; height shouldn't count)
 const floorDist = g => Math.hypot(g.userData.worldPos.x - character.position.x, g.userData.worldPos.z - character.position.z);
 
 function setupAnimatedArt(proj, img, actx, coverRect, tex, group, mat){
-  const lp = new LivingPainting(img, proj.animated);
-  // redraw the resting state through the same canvas path the animation uses, so the
-  // painting doesn't subtly change sharpness when it starts playing (browsers scale an
-  // <img> and a <canvas> with slightly different filtering)
+  const lp = new LivingPainting(img, proj.animated, { scale: PAINT_SCALE });
+  // the resting state at full quality (the cold stone / the void before an intro)
   actx.clearRect(0, 0, actx.canvas.width, actx.canvas.height);
-  actx.drawImage(lp.canvas, ...coverRect);
+  actx.drawImage(lp.stillSource(), ...coverRect);
   tex.needsUpdate = true;
-  const live = document.createElement('canvas');
-  live.width = Math.round(actx.canvas.width * LIVE_SCALE); live.height = Math.round(actx.canvas.height * LIVE_SCALE);
-  const liveTex = new THREE.CanvasTexture(live);
+  // the engine's own canvas, shown with the same cover-crop as the still: coverRect
+  // places the art at [dx, dy, dw, dh] inside the still's canvas (Cw x Ch)
+  const liveTex = new THREE.CanvasTexture(lp.canvas);
   liveTex.generateMipmaps = false; liveTex.minFilter = THREE.LinearFilter;
-  animatedPaintings.push({ group, actx, coverRect, tex, mat, lp, live, lctx: live.getContext('2d'), liveTex,
-    liveRect: coverRect.map(v => v * LIVE_SCALE), playing: false, last: 0, forceIntro: false,
+  const [dx, dy, dw, dh] = coverRect, Cw = actx.canvas.width, Ch = actx.canvas.height;
+  liveTex.repeat.set(Cw / dw, Ch / dh);
+  liveTex.offset.set(-dx / dw, 1 - (Ch - dy) / dh);
+  animatedPaintings.push({ group, actx, coverRect, tex, mat, lp, liveTex, playing: false, last: 0, forceIntro: false,
     stillState: lp.intro ? lp.intro.state : null });
 }
 function showLive(p, on){
@@ -2030,7 +2082,7 @@ function refreshStill(p){
   const s = p.lp.intro ? p.lp.intro.state : null;
   if(!p.lp.dirty && s === p.stillState) return;
   p.lp.dirty = false; p.stillState = s;
-  p.actx.drawImage(p.lp.canvas, ...p.coverRect); p.tex.needsUpdate = true;
+  p.actx.drawImage(p.lp.stillSource(), ...p.coverRect); p.tex.needsUpdate = true;
 }
 
 // the one painting allowed to animate right now (or null). The one you're facing
@@ -2100,7 +2152,7 @@ function updateAnimatedPaintings(now){
     if(!p.playing){ if(p.lp.dirty) refreshStill(p); return; }   // e.g. an intro's first frame arrived while far away
     if(now - p.last < 1000 / ANIM_FPS || !p.lp.ready()) return;
     p.last = now;
-    p.lctx.drawImage(p.lp.render(now), ...p.liveRect);       // same placement as the still, at live size
+    p.lp.render(now);                                         // draws into the live texture's canvas
     p.liveTex.needsUpdate = true;
     showLive(p, true);                                        // (only once it has a real frame in it)
   });
@@ -2341,9 +2393,9 @@ function buildStandGeometry(){
   g.computeVertexNormals();   // non-indexed → crisp flat faces
   return g;
 }
-const standColorTex = texLoader.load('assets/textures/stand-color.webp');
-const standNormalTex = texLoader.load('assets/textures/stand-normal.webp');
-standColorTex.anisotropy = standNormalTex.anisotropy = 4;
+const standSetup = t => { t.anisotropy = 4; };
+const standColorTex = loadTexture('assets/textures/stand-color.webp', standSetup);
+const standNormalTex = loadTexture('assets/textures/stand-normal.webp', standSetup);
 const pedestalGeo = buildStandGeometry();
 const pedestalMat = new THREE.MeshStandardMaterial({
   // aged, darker marble: a deep warm tint plus stronger relief, so it sits in the
@@ -3366,8 +3418,18 @@ function adaptResolution(raw){
   renderer.setPixelRatio(pr);
 }
 
-function animate(){
+// Frame cap: 60 fps. On 120/144 Hz screens the browser would otherwise render (and
+// animate the paintings) up to 2.4x as often for no visible gain — wasted GPU/CPU,
+// heat and battery. Frames are kept on a steady 60 Hz grid; 60 Hz screens are unaffected.
+const FRAME_MS = 1000 / 60;
+let frameClock = 0;
+function animate(now){
   requestAnimationFrame(animate);
+  if(now !== undefined){
+    const elapsed = now - frameClock;
+    if(elapsed < FRAME_MS - 1.5) return;           // too soon on a fast screen: skip this one
+    frameClock = elapsed > FRAME_MS * 3 ? now : frameClock + FRAME_MS * Math.max(1, Math.floor((elapsed + 1.5) / FRAME_MS));
+  }
   const raw = clock.getDelta();
   adaptResolution(raw);
   const dt = Math.min(0.05, raw);

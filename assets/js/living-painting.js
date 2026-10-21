@@ -1008,10 +1008,21 @@
   }
   const pathLength = path => path.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - path[i][0], p[1] - path[i][1]), 0);
 
-  function LivingPainting(img, config) {
+  // a canvas drawn in art coordinates but stored at `S` resolution (S < 1 = cheaper)
+  function scaledCanvas(W, H, S) {
+    const c = makeCanvas(Math.max(1, Math.round(W * S)), Math.max(1, Math.round(H * S)));
+    c.getContext('2d').setTransform(S, 0, 0, S, 0, 0);
+    return c;
+  }
+
+  // opts.scale: internal resolution of the animated frame (1 = the art's own size).
+  // Every layer still works in the art's pixel coordinates; only the per-frame
+  // canvases are smaller, so each frame costs a fraction to draw and upload.
+  function LivingPainting(img, config, opts) {
     const W = this.W = img.naturalWidth || img.width, H = this.H = img.naturalHeight || img.height;
+    const S = this.S = Math.min(1, Math.max(0.25, (opts && opts.scale) || 1));
     this.img = img;
-    this.canvas = makeCanvas(W, H);
+    this.canvas = scaledCanvas(W, H, S);
     this.ctx = this.canvas.getContext('2d');
     this.ctx.drawImage(img, 0, 0);
     this.startedAt = 0;
@@ -1113,15 +1124,16 @@
             { src: L.src, muted: true, loop: true, playsInline: true, preload: 'none', crossOrigin: 'anonymous' });
         }
         L.video = videos[L.src];
-        L.frame = makeCanvas(W, H);
+        L.frame = scaledCanvas(W, H, S);
         if (L.flash) {
           L.stillMasked = masked(img, L.mask, W, H);
           L.probe = makeCanvas(64, 100);
           const p = L.probe.getContext('2d'); p.drawImage(L.stillMasked, 0, 0, 64, 100);
           L.baseLuma = avgLuma(L.probe);
-          L.highlight = makeCanvas(W, H);
+          L.highlight = scaledCanvas(W, H, S);
         }
       }
+      if (L.layer) L.layer = scaledCanvas(W, H, S);   // full-frame particle layers (embers, rain, ripples)
       return L;
     });
     this.videos = Object.values(videos);
@@ -1166,6 +1178,16 @@
       this.videos.forEach(x => x.play().catch(() => {}));
       try { if (I.cfg.onceKey) sessionStorage.setItem(I.cfg.onceKey, '1'); } catch (e) {}
     });
+  };
+  // what the painting looks like at rest, at full quality (the animated frame may be
+  // drawn smaller): the cold stone / the void before an intro, otherwise the art itself
+  LivingPainting.prototype.stillSource = function () {
+    const I = this.intro;
+    if (I && I.state !== 'done') {
+      if (I.cfg.type === 'ignite') return this.cold || this.img;
+      if (I.cfg.poster !== 'art') return this.canvas;   // the void: dark, nothing to lose
+    }
+    return this.img;
   };
   LivingPainting.prototype.drawIntroFrame = function (alpha = 1) {
     const { v, cfg } = this.intro, f = cfg.fit;
@@ -1341,12 +1363,12 @@
           h.drawImage(L.mask, 0, 0);
           f.globalCompositeOperation = 'lighter';
           f.globalAlpha = amount;
-          f.drawImage(L.highlight, 0, 0);
+          f.drawImage(L.highlight, 0, 0, W, H);
           }
           f.globalCompositeOperation = 'source-over'; f.globalAlpha = 1;
         }
       }
-      ctx.drawImage(L.frame, 0, 0);
+      ctx.drawImage(L.frame, 0, 0, W, H);
     }
     return this.canvas;
   };
@@ -1408,7 +1430,7 @@
     }
     k.globalAlpha = 1;
     k.globalCompositeOperation = 'destination-in'; k.drawImage(L.mask, 0, 0);
-    this.ctx.globalCompositeOperation = 'lighter'; this.ctx.drawImage(L.layer, 0, 0);
+    this.ctx.globalCompositeOperation = 'lighter'; this.ctx.drawImage(L.layer, 0, 0, this.W, this.H);
     this.ctx.globalCompositeOperation = 'source-over';
   };
 
@@ -1579,7 +1601,7 @@
   LivingPainting.prototype.renderBreathe = function (L, t) {
     const [x, y, w, h] = L.box, [px, py] = L.pivot, k = Math.sin(t * 6.283 / (L.period || 3.2)), a = L.amount || 0.005;
     const sy = 1 + a * k, sx = 1 + a * 0.45 * k;
-    const tc = L.temp.getContext('2d'); tc.clearRect(0, 0, w, h); tc.drawImage(this.canvas, x, y, w, h, 0, 0, w, h);
+    const S = this.S, tc = L.temp.getContext('2d'); tc.clearRect(0, 0, w, h); tc.drawImage(this.canvas, x * S, y * S, w * S, h * S, 0, 0, w, h);
     this.ctx.drawImage(L.temp, px - (px - x) * sx, py - (py - y) * sy, w * sx, h * sy);
   };
 
@@ -1593,7 +1615,7 @@
     this.renderLayers(now);
     const maxR = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
     const k = Math.max(0, Math.min(1, (e - beat) / (spreadEnd - beat))), R = maxR * Math.pow(k, 1.5);
-    const T = this.igniteTemp || (this.igniteTemp = makeCanvas(W, H)), tx = T.getContext('2d');
+    const T = this.igniteTemp || (this.igniteTemp = scaledCanvas(W, H, this.S)), tx = T.getContext('2d');
     const ring = (inner, mid, outer, a0, a1, a2) => {      // radial alpha profile, as a mask
       const g = tx.createRadialGradient(cx, cy, Math.max(0, inner), cx, cy, Math.max(1, outer));
       const m = (mid - inner) / Math.max(1, outer - inner);
@@ -1604,14 +1626,14 @@
     if (R < maxR) {
       tx.clearRect(0, 0, W, H); tx.drawImage(this.cold, 0, 0);
       ring(R - 120, R - 60, R, 0, 0.5, 1);
-      ctx.drawImage(T, 0, 0);
+      ctx.drawImage(T, 0, 0, W, H);
     }
     // the hot front: the cracks blaze where the fire is arriving
     const lava = this.layers.find(l => l.type === 'lavaflow' && l.sprites);
     if (lava && R > 0 && R < maxR) {
       tx.clearRect(0, 0, W, H); tx.drawImage(lava.sprites.add, lava.box.x, lava.box.y);
       ring(R - 140, R - 30, R + 10, 0, 1, 0);
-      ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(T, 0, 0); ctx.drawImage(T, 0, 0); ctx.globalCompositeOperation = 'source-over';
+      ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(T, 0, 0, W, H); ctx.drawImage(T, 0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
     }
     // eyes stay dark until the very end
     const eyeOn = smoothstep(eyesAt, eyesAt + 0.12, e);
@@ -1677,7 +1699,7 @@
   // then everything eases back to the art and rests
   LivingPainting.prototype.renderAppDemo = function (L, t) {
     const ctx = this.ctx, T = L.cycle || 16, u = t % T, ax = L.axes.x, ay = L.axes.y;
-    const plane = (x, y, s) => ctx.setTransform(ax[0] * s, ax[1] * s, ay[0] * s, ay[1] * s, x, y);   // draw in the screen's tilted plane
+    const S = this.S, plane = (x, y, s) => ctx.setTransform(ax[0] * s * S, ax[1] * s * S, ay[0] * s * S, ay[1] * s * S, x * S, y * S);   // draw in the screen's tilted plane
     const ease = v => v * v * (3 - 2 * v), clamp = v => Math.max(0, Math.min(1, v));
     const tick = L.ticks || [1.6, 3.0, 4.4], resetEnd = 0.6, fillA = 5.4, fillB = 6.8, lvl = 6.9, backA = 9.6, backB = 10.3;
     if (u > backB) return;                                    // resting: the untouched art
@@ -1733,7 +1755,7 @@
       // bar fill from the start of the track toward its end
       const B = L.bar, frac = leveled ? 0.02 : xp / 200;
       const dx = B.to[0] - B.from[0], dy = B.to[1] - B.from[1], len = Math.hypot(dx, dy);
-      ctx.setTransform(dx / len, dy / len, -dy / len, dx / len, B.from[0], B.from[1]);
+      ctx.setTransform(dx / len * S, dy / len * S, -dy / len * S, dx / len * S, B.from[0] * S, B.from[1] * S);
       const g = ctx.createLinearGradient(0, 0, len, 0); g.addColorStop(0, '#6d3cff'); g.addColorStop(1, '#a66bff');
       const fw = Math.max(B.thick, len * frac), r = B.thick / 2;
       ctx.fillStyle = g; roundRect(ctx, -r, -r, fw + r, B.thick, r); ctx.fill();
@@ -1748,7 +1770,7 @@
       text(L.levelText, 'Level 4', L.levelText.color);
       const since = u - lvl, B = L.bar, mx = (B.from[0] + B.to[0]) / 2, my = (B.from[1] + B.to[1]) / 2;
       if (since < 2.4) {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.setTransform(S, 0, 0, S, 0, 0);
         const fl = Math.max(0, 1 - since / 0.9), R = 60 + since * 260;
         const rg = ctx.createRadialGradient(mx, my, 0, mx, my, R);
         rg.addColorStop(0, `rgba(255,170,80,${(0.55 * fl).toFixed(3)})`); rg.addColorStop(0.5, `rgba(150,90,255,${(0.35 * fl).toFixed(3)})`); rg.addColorStop(1, 'rgba(120,60,255,0)');
@@ -1833,7 +1855,7 @@
       k.strokeStyle = `rgba(215,215,255,${a.toFixed(3)})`; k.lineWidth = 0.7 + 0.6 * (hash(i * 4.4) * 0.5 + 0.5);
       k.beginPath(); k.moveTo(x, y); k.lineTo(x - slant * len, y + len); k.stroke();
     }
-    this.ctx.globalCompositeOperation = 'screen'; this.ctx.drawImage(L.layer, 0, 0);
+    this.ctx.globalCompositeOperation = 'screen'; this.ctx.drawImage(L.layer, 0, 0, this.W, this.H);
     this.ctx.globalCompositeOperation = 'source-over';
   };
 
@@ -1860,7 +1882,7 @@
       if (u < 0.18) { const s = 1 - u / 0.18; k.fillStyle = `rgba(235,235,255,${(0.7 * s).toFixed(3)})`; k.beginPath(); k.ellipse(x, y - 2 * near * (1 - s), 1.3 * near, 1.6 * near, 0, 0, 6.283); k.fill(); }
     }
     k.globalCompositeOperation = 'destination-in'; k.drawImage(L.mask, 0, 0); k.globalCompositeOperation = 'source-over';
-    this.ctx.globalCompositeOperation = 'screen'; this.ctx.drawImage(L.layer, 0, 0);
+    this.ctx.globalCompositeOperation = 'screen'; this.ctx.drawImage(L.layer, 0, 0, this.W, this.H);
     this.ctx.globalCompositeOperation = 'source-over';
   };
 
