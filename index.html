@@ -715,8 +715,8 @@
 <!-- KTX2 (GPU-compressed textures): three.js r135's standalone loader + Basis transcoder, works with r128 -->
 <script src="assets/js/vendor/WorkerPool.js"></script>
 <script src="assets/js/vendor/KTX2Loader.js"></script>
-<script src="assets/js/living-painting.js?v=20"></script>
-<script src="assets/js/ambience.js?v=4"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=21"></script>
+<script src="assets/js/ambience.js?v=5"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -3624,7 +3624,31 @@ function initAmbience(){
 function ambienceCues(key, g){
   const P = g.userData.ambP || (g.userData.ambP = animatedPaintings.find(p => p.group === g) || null);
   if(!P || !P.lp.layers) return;
-  const C = P.ambCues || (P.ambCues = { lamp: P.lp.layers.find(l => l.type === 'flicker'), flash: P.lp.layers.find(l => l.flash), lastLamp: -1, armed: true, next: 0 });
+  const C = P.ambCues || (P.ambCues = { lamp: P.lp.layers.find(l => l.type === 'flicker'), flash: P.lp.layers.find(l => l.flash), lastLamp: -1, armed: true, next: 0,
+    balloon: P.lp.layers.find(l => l.type === 'balloon'), ears: P.lp.layers.filter(l => l.type === 'flutter' && l.flap),
+    breathe: P.lp.layers.find(l => l.type === 'breathe'), lastPhase: null, earsOn: [], lastBreath: 0 });
+  // Blueey: the balloon's moments, his ears, his breathing
+  if(C.balloon && P.playing && C.balloon.phase){
+    const ph = C.balloon.phase;
+    if(ph !== C.lastPhase){
+      if(ph === 'inflate') ambience.signal(key, 'inflate', 1.7);
+      else if(ph === 'tremble') ambience.signal(key, 'tremble', 0.3);
+      else if(ph === 'pop'){ ambience.signal(key, 'pop'); C.popped = true; }
+      else if(ph === 'regrow' && C.popped){ ambience.signal(key, 'regrow'); C.popped = false; }   // once per pop
+      C.lastPhase = ph;
+    }
+  }
+  C.ears.forEach((L, i) => {
+    const on = P.playing && !!L.flapping;
+    if(on && !C.earsOn[i]) ambience.signal(key, 'flap', L.anchor[0] < P.lp.W / 2 ? -0.35 : 0.35);
+    C.earsOn[i] = on;
+  });
+  if(C.breathe && P.playing && C.breathe.breath != null){
+    const b = C.breathe.breath, prev = C.lastBreath;
+    if(prev < -0.2 && b >= -0.2) ambience.signal(key, 'breath', true);    // starts breathing in
+    else if(prev > 0.2 && b <= 0.2) ambience.signal(key, 'breath', false); // starts breathing out
+    C.lastBreath = b;
+  }
   if(C.lamp){
     const lv = P.playing && C.lamp.level != null ? C.lamp.level : 1;   // a resting painting shows the lamp on
     if(lv !== C.lastLamp){ ambience.signal(key, 'lamp', lv); C.lastLamp = lv; }

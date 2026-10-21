@@ -1286,6 +1286,7 @@
       if (L.type === 'flutter') {
         if (L.flap) {                                   // bursts only: rest = the untouched still
           const s = sinceEvent(L.flapSched, t), dur = L.flap.dur || 0.9;
+          L.flapping = s < dur;                         // read by the gallery's ear-flap sound
           if (s >= dur) continue;
           L.gl.uniform1f(L.uGain, Math.sin(Math.PI * s / dur));
         }
@@ -1520,6 +1521,8 @@
     else if (since < t2) s = 1.42 + 0.025 * Math.sin(since * 70);
     else if (since < t4) { show = false; if (since < t3) pop = (since - t2) / T.pop; }
     else if (since < t5) { const u = (since - t4) / T.regrow; s = 1 - Math.exp(-6 * u) * Math.cos(9 * u); s = Math.max(0.05, s); }
+    // which moment it is in, for the gallery's sound (inflate → tremble → pop → gone → regrow → idle)
+    L.phase = since < t1 ? 'inflate' : since < t2 ? 'tremble' : since < t3 ? 'pop' : since < t4 ? 'gone' : since < t5 ? 'regrow' : 'idle';
     // the head without its balloon
     ctx.drawImage(L.patch, bx, by);
     if (show) {
@@ -1600,6 +1603,7 @@
   // breathing: the whole region (already composited) squashes and stretches a hair
   LivingPainting.prototype.renderBreathe = function (L, t) {
     const [x, y, w, h] = L.box, [px, py] = L.pivot, k = Math.sin(t * 6.283 / (L.period || 3.2)), a = L.amount || 0.005;
+    L.breath = k;   // read by the gallery's breathing sound (rising = breathing in)
     const sy = 1 + a * k, sx = 1 + a * 0.45 * k;
     const S = this.S, tc = L.temp.getContext('2d'); tc.clearRect(0, 0, w, h); tc.drawImage(this.canvas, x * S, y * S, w * S, h * S, 0, 0, w, h);
     this.ctx.drawImage(L.temp, px - (px - x) * sx, py - (py - y) * sy, w * sx, h * sy);
