@@ -153,26 +153,6 @@
       u += rnd(0.03, 0.16);
     }
   }
-  // A rubber squeak: a short reedy tone with a quick wobble (balloon skin rubbing).
-  function squeak(S, t, f, dur, gain){
-    const c = S.ctx, o = c.createOscillator(); o.type = 'sawtooth';
-    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * rnd(1.08, 1.25), t + dur);
-    const v = c.createOscillator(), vg = c.createGain(); v.frequency.value = rnd(28, 40); vg.gain.value = f * 0.04; v.connect(vg); vg.connect(o.frequency);
-    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * 2; bp.Q.value = 2.5;
-    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(bp); bp.connect(g); g.connect(S.out);
-    o.start(t); v.start(t); o.stop(t + dur + 0.02); v.stop(t + dur + 0.02);
-  }
-  // A soft low whoosh (a big floppy ear moving air), placed left/right.
-  function swoosh(S, t, pan, k){
-    const c = S.ctx, src = c.createBufferSource(); src.buffer = S.eng.brown; src.loop = true;
-    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 1.5;
-    f.frequency.setValueAtTime(180, t); f.frequency.exponentialRampToValueAtTime(700, t + 0.12); f.frequency.exponentialRampToValueAtTime(200, t + 0.32);
-    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7 * k, t + 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-    src.connect(f); f.connect(g);
-    if (S.eng.canPan) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(S.out); } else g.connect(S.out);
-    src.start(t, Math.random() * 7); src.stop(t + 0.4);
-  }
   // A soft bell/chime: a few inharmonic partials.
   function chime(S, t, f, gain, dur){
     [[1, 1], [2.76, 0.32], [5.4, 0.12]].forEach(([m, k]) => blip(S, t, { f0: f * m, dur: dur / (m > 1 ? 1.8 : 1), gain: gain * k, attack: 0.003 }));
@@ -279,40 +259,45 @@
         [[1.4, 3.8], (S, t) => blip(S, t, { f0: rnd(80, 110), f1: rnd(45, 60), dur: 0.28, gain: 0.12, lp: 300 })]
       ]
     },
-    // Blueey: no music — the sounds of what he does on screen, driven by the painting:
-    // the balloon stretching as it inflates, squeaking as it trembles, the POP, the
-    // little rubbery "fwip" as it grows back; his ears flapping; soft breathing.
+    // Blueey: cartoon sounds cued by the painting — a "bink" for every blink, a boing as
+    // he jumps and a bop as he lands, his giggle and "yippee!" (short voice clips) in the
+    // hello, and the POP of his balloon. A quiet warm room underneath.
     blueey: {
       mix: 1.6,
-      beds: S => { bed(S, { noise: 'brown', freq: 260, gain: 0.025 }); },   // a quiet, warm room
+      beds: S => {
+        bed(S, { noise: 'brown', freq: 260, gain: 0.02 });
+        S.eng.loadSample('assets/projects/blueey/animated/blueey-giggle.mp3');
+        S.eng.loadSample('assets/projects/blueey/animated/blueey-yippee.mp3');
+      },
       signals: {
-        inflate: (S, dur, t) => {
-          // air rushing in, rising as the balloon fills, under rubbery creaks
-          const c = S.ctx, src = c.createBufferSource(); src.buffer = S.eng.white; src.loop = true;
-          const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
-          f.frequency.setValueAtTime(380, t); f.frequency.exponentialRampToValueAtTime(1300, t + dur);
-          const g = c.createGain(); g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(0.09, t + 0.25); g.gain.setValueAtTime(0.09, t + dur - 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.1);
-          src.connect(f); f.connect(g); g.connect(S.out); src.start(t, Math.random() * 7); src.stop(t + dur + 0.15);
-          for (let u = t + 0.15; u < t + dur; u += rnd(0.22, 0.45)) squeak(S, u, rnd(380, 520) * (1 + (u - t) / dur * 0.6), rnd(0.06, 0.12), 0.05);
+        blink: (S, _, t) => {   // a tiny bright "bink"
+          blip(S, t, { type: 'sine', f0: 1650, f1: 2350, dur: 0.07, gain: 0.05, attack: 0.002 });
+          blip(S, t, { type: 'sine', f0: 3300, f1: 4700, dur: 0.04, gain: 0.012, attack: 0.002 });
         },
-        tremble: (S, dur, t) => { for (let u = t; u < t + dur; u += 0.09) squeak(S, u, rnd(900, 1250), 0.05, 0.045); },   // stretched thin
+        boing: (S, k, t) => {   // springy jump
+          const c = S.ctx, o = c.createOscillator(); o.type = 'triangle';
+          o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(620, t + 0.22);
+          const v = c.createOscillator(), vg = c.createGain(); v.frequency.value = 26; vg.gain.value = 40; v.connect(vg); vg.connect(o.frequency);
+          const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09 * (k || 1), t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+          o.connect(g); g.connect(S.out); o.start(t); v.start(t); o.stop(t + 0.35); v.stop(t + 0.35);
+        },
+        bop: (S, k, t) => {     // soft, round landing
+          blip(S, t, { type: 'sine', f0: 210, f1: 85, dur: 0.12, gain: 0.22 * (k || 1), attack: 0.002 });
+          hit(S, t, { filter: 'lowpass', freq: 900, dur: 0.05, gain: 0.08 * (k || 1) });
+        },
+        voice: (S, url, t) => S.eng.playSample(S, url, t, 0.9),
         pop: (S, _, t) => {
           hit(S, t, { filter: 'highpass', freq: 500, q: 0.5, dur: 0.09, attack: 0.001, gain: 0.5 });           // the bang
           hit(S, t, { filter: 'bandpass', freq: 2200, q: 0.8, dur: 0.035, attack: 0.001, gain: 0.35 });
-          blip(S, t, { f0: 140, f1: 45, dur: 0.14, gain: 0.35, attack: 0.001 });                               // the thump
+          blip(S, t, { f0: 140, f1: 45, dur: 0.14, gain: 0.35, attack: 0.001 });                              // the thump
           hit(S, t + 0.03, { freq: 1100, q: 1.5, dur: 0.18, gain: 0.08 });                                    // rubber shreds flapping
-        },
-        regrow: (S, _, t) => { squeak(S, t, 420, 0.18, 0.05); squeak(S, t + 0.16, 640, 0.12, 0.04);
-          hit(S, t, { freq: 900, q: 0.8, dur: 0.25, attack: 0.04, gain: 0.04 }); },
-        flap: (S, pan, t) => {   // ears: two soft, low whooshes of a big floppy ear
-          for (let i = 0; i < 2; i++) swoosh(S, t + i * 0.38, pan, 0.55 - i * 0.15);
-        },
-        breath: (S, inhale, t) => hit(S, t, { freq: inhale ? 1500 : 1000, q: 0.6, dur: inhale ? 0.9 : 1.1, attack: 0.45, gain: 0.018 })
+        }
       },
       events: []
     },
-    // a fitness app glowing in the dark: soft device hum, UI ticks, the odd level-up
+    // the Forge coach app on the phone: a soft device hum under the streak flame, and the
+    // app's own sounds exactly when the screen shows them (signals from the painting):
+    // a "done" ding as each task is ticked, the XP bar filling, the LEVEL UP fanfare
     forge: {
       mix: 2.5,
       beds: S => {
@@ -320,10 +305,26 @@
         tone(S, { freq: 220.6, gain: 0.006 });
         bed(S, { noise: 'brown', freq: 320, gain: 0.07, lfo: [0.5, 0.3] });
       },
-      events: [
-        [[1.8, 4], (S, t) => { blip(S, t, { f0: 1480, dur: 0.05, gain: 0.025 }); if(Math.random() < 0.5) blip(S, t + 0.09, { f0: 1980, dur: 0.05, gain: 0.02 }); }],
-        [[11, 19], (S, t) => [659.25, 880, 1318.5].forEach((f, i) => chime(S, t + i * 0.11, f, 0.022, 0.8))]
-      ]
+      signals: {
+        check: (S, i, t) => {   // task completed: a tap, then a bright two-note ding that climbs with each task
+          const base = [784, 880, 988][i % 3];
+          hit(S, t, { filter: 'highpass', freq: 3000, dur: 0.015, gain: 0.05 });
+          chime(S, t + 0.02, base, 0.035, 0.45);
+          chime(S, t + 0.11, base * 1.5, 0.03, 0.6);
+        },
+        fill: (S, dur, t) => {  // the XP bar rushing to full: a rising shimmer
+          const c = S.ctx, o = c.createOscillator(); o.type = 'triangle';
+          o.frequency.setValueAtTime(330, t); o.frequency.exponentialRampToValueAtTime(1320, t + dur);
+          const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.025, t + 0.2); g.gain.setValueAtTime(0.025, t + dur - 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.05);
+          o.connect(g); g.connect(S.out); o.start(t); o.stop(t + dur + 0.1);
+          for (let u = t; u < t + dur; u += 0.09) blip(S, u, { f0: 1500 + (u - t) / dur * 1500, dur: 0.04, gain: 0.008 });
+        },
+        levelup: (S, _, t) => { // LEVEL UP!: a quick major arpeggio and a held sparkle
+          [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => chime(S, t + i * 0.09, f, 0.04, i === 3 ? 1.6 : 0.7));
+          for (let i = 0; i < 6; i++) blip(S, t + 0.4 + i * 0.06, { f0: 2093 * (1 + i * 0.12), dur: 0.08, gain: 0.01 });
+        }
+      },
+      events: []
     }
   };
 
@@ -382,6 +383,22 @@
   GalleryAmbience.prototype.signal = function(key, name, value){
     const S = this.scenes[key], fn = S && SCENES[key].signals && SCENES[key].signals[name];
     if (fn) fn(S, value, this.ctx.currentTime);
+  };
+  // short recorded clips (voice): fetched + decoded once, shared by every scene
+  GalleryAmbience.prototype.loadSample = function(url){
+    this.samples = this.samples || {};
+    if (!this.samples[url]) {
+      const rec = this.samples[url] = { buf: null };
+      fetch(url).then(r => r.arrayBuffer()).then(ab => new Promise((res, rej) => this.ctx.decodeAudioData(ab, res, rej)))
+        .then(b => { rec.buf = b; }).catch(() => {});
+    }
+    return this.samples[url];
+  };
+  GalleryAmbience.prototype.playSample = function(S, url, t, gain){
+    const rec = this.loadSample(url); if (!rec.buf) return;   // not ready yet: skip rather than play late
+    const src = this.ctx.createBufferSource(); src.buffer = rec.buf;
+    const g = this.ctx.createGain(); g.gain.value = gain;
+    src.connect(g); g.connect(S.out); src.start(Math.max(t, this.ctx.currentTime));
   };
   GalleryAmbience.prototype.stopAll = function(){ Object.keys(this.scenes).forEach(k => this.sleep(k)); };
 

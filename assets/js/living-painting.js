@@ -1706,6 +1706,7 @@
     const S = this.S, plane = (x, y, s) => ctx.setTransform(ax[0] * s * S, ax[1] * s * S, ay[0] * s * S, ay[1] * s * S, x * S, y * S);   // draw in the screen's tilted plane
     const ease = v => v * v * (3 - 2 * v), clamp = v => Math.max(0, Math.min(1, v));
     const tick = L.ticks || [1.6, 3.0, 4.4], resetEnd = 0.6, fillA = 5.4, fillB = 6.8, lvl = 6.9, backA = 9.6, backB = 10.3;
+    L.u = u; L.timeline = { tick, fillA, fillB, lvl };     // read by the gallery's app sounds
     if (u > backB) return;                                    // resting: the untouched art
     const fade = 1 - clamp((u - backA) / (backB - backA));    // overlays ease back out at the end
     const done = tick.filter(x => u >= x).length;
@@ -1950,6 +1951,7 @@
     const u0 = t % L.schedule.cycle;
     let lid = 0;
     for (const b of L.schedule.list) { const v = lidAt(u0 - b); if (v > lid) lid = v; if (b > u0) break; }
+    L.lidAmt = lid;   // read by the gallery's blink sound
     if (lid <= 0) return;
     const k = L.lid.getContext('2d');
     for (const e of L.eyes) {

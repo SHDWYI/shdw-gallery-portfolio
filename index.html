@@ -715,8 +715,8 @@
 <!-- KTX2 (GPU-compressed textures): three.js r135's standalone loader + Basis transcoder, works with r128 -->
 <script src="assets/js/vendor/WorkerPool.js"></script>
 <script src="assets/js/vendor/KTX2Loader.js"></script>
-<script src="assets/js/living-painting.js?v=21"></script>
-<script src="assets/js/ambience.js?v=5"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
+<script src="assets/js/living-painting.js?v=22"></script>
+<script src="assets/js/ambience.js?v=6"></script><!-- bump v when the engine changes, so browsers fetch the new one -->
 <script>
 /* =========================================================
    SHDWYI — Walkable Gallery Portfolio Demo
@@ -1102,7 +1102,12 @@ const PROJECTS = [
     // you walk up (each page load, or jumping here from the index) he says hello.
     animated: {
       intro: { src: 'assets/projects/blueey/animated/blueey-hello.mp4', fit: { x: 1, y: -99, scale: 0.921 },
-               poster: 'art', lazy: true, fadeIn: 0.25, fade: 0.35, range: 14 },
+               poster: 'art', lazy: true, fadeIn: 0.25, fade: 0.35, range: 14,
+               // sounds on the clip's own moments (seconds into it): blink, blink… blink, a giggle
+               // as he scrunches up, boing up / bop down, then "yippee!" with a little hop and wave
+               cues: [[0.12, 'blink'], [0.42, 'blink'], [1.32, 'blink'],
+                      [2.02, 'voice', 'assets/projects/blueey/animated/blueey-giggle.mp3'], [2.30, 'boing', 1], [2.66, 'bop', 1],
+                      [4.10, 'voice', 'assets/projects/blueey/animated/blueey-yippee.mp3'], [4.33, 'boing', 0.7], [4.62, 'bop', 0.7]] },
       layers: [
         { type: 'flutter', anchor: [300, 700], reach: 230, amp: 9, wavelength: 3000, speed: 2.2, flap: { every: [5, 9], dur: 0.8 },
           areas: [{ poly: [[75,480],[300,520],[330,700],[320,960],[200,975],[75,820]], feather: 14 }] },
@@ -3608,7 +3613,7 @@ const AMBIENCE = {
     'REN ASHVEIL': 'ren', 'REQUIEM': 'requiem', 'REBIRTH': 'rebirth', 'BLUEEY': 'blueey', 'FORGE AI COACH APP': 'forge'
   }
 };
-var ambience = null, ambMaster = null, musicDuck = null;
+var ambience = null, ambMaster = null, musicDuck = null, ambActiveP = null;
 const _ambCam = new THREE.Vector3(), _ambRight = new THREE.Vector3(), _ambFwd = new THREE.Vector3();
 function initAmbience(){
   if(ambience || !window.GalleryAmbience) return;
@@ -3625,30 +3630,39 @@ function ambienceCues(key, g){
   const P = g.userData.ambP || (g.userData.ambP = animatedPaintings.find(p => p.group === g) || null);
   if(!P || !P.lp.layers) return;
   const C = P.ambCues || (P.ambCues = { lamp: P.lp.layers.find(l => l.type === 'flicker'), flash: P.lp.layers.find(l => l.flash), lastLamp: -1, armed: true, next: 0,
-    balloon: P.lp.layers.find(l => l.type === 'balloon'), ears: P.lp.layers.filter(l => l.type === 'flutter' && l.flap),
-    breathe: P.lp.layers.find(l => l.type === 'breathe'), lastPhase: null, earsOn: [], lastBreath: 0 });
-  // Blueey: the balloon's moments, his ears, his breathing
+    balloon: P.lp.layers.find(l => l.type === 'balloon'), blink: P.lp.layers.find(l => l.type === 'blink'),
+    app: P.lp.layers.find(l => l.type === 'appdemo'), lastPhase: null, lastLid: 0, lastU: -1, introT: -1 });
+  const I = P.lp.intro;
+  // an intro video's own cues (Blueey's hello: his blinks, the giggle, the jump and landing…),
+  // fired as the video passes each moment: [seconds, signal, value]
+  if(I && I.cfg.cues && I.v && I.state === 'playing'){
+    const ct = I.v.currentTime;
+    if(ct < C.introT) C.introT = -1;                         // replayed from the start
+    I.cfg.cues.forEach(([at, name, val]) => { if(C.introT < at && at <= ct) ambience.signal(key, name, val); });
+    C.introT = ct;
+  } else if(C.introT >= 0 && (!I || I.state !== 'playing')) C.introT = -1;
+  const introPlaying = I && I.state === 'playing';
+  // every blink of the living painting
+  if(C.blink && P.playing && !introPlaying){
+    const lid = C.blink.lidAmt || 0;
+    if(lid > 0 && C.lastLid <= 0) ambience.signal(key, 'blink');
+    C.lastLid = lid;
+  }
+  // the balloon bursting
   if(C.balloon && P.playing && C.balloon.phase){
     const ph = C.balloon.phase;
-    if(ph !== C.lastPhase){
-      if(ph === 'inflate') ambience.signal(key, 'inflate', 1.7);
-      else if(ph === 'tremble') ambience.signal(key, 'tremble', 0.3);
-      else if(ph === 'pop'){ ambience.signal(key, 'pop'); C.popped = true; }
-      else if(ph === 'regrow' && C.popped){ ambience.signal(key, 'regrow'); C.popped = false; }   // once per pop
-      C.lastPhase = ph;
+    if(ph !== C.lastPhase){ if(ph === 'pop') ambience.signal(key, 'pop'); C.lastPhase = ph; }
+  }
+  // the Forge app: a ding as each task is ticked, the XP bar filling, LEVEL UP — exactly when the screen shows them
+  if(C.app && P.playing && C.app.u != null && C.app.timeline){
+    const u = C.app.u, last = C.lastU, T = C.app.timeline;
+    if(last >= 0 && u >= last && u - last < 1){
+      T.tick.forEach((at, i) => { if(last < at && at <= u) ambience.signal(key, 'check', i); });
+      if(last < T.fillA && T.fillA <= u) ambience.signal(key, 'fill', T.fillB - T.fillA);
+      if(last < T.lvl && T.lvl <= u) ambience.signal(key, 'levelup');
     }
-  }
-  C.ears.forEach((L, i) => {
-    const on = P.playing && !!L.flapping;
-    if(on && !C.earsOn[i]) ambience.signal(key, 'flap', L.anchor[0] < P.lp.W / 2 ? -0.35 : 0.35);
-    C.earsOn[i] = on;
-  });
-  if(C.breathe && P.playing && C.breathe.breath != null){
-    const b = C.breathe.breath, prev = C.lastBreath;
-    if(prev < -0.2 && b >= -0.2) ambience.signal(key, 'breath', true);    // starts breathing in
-    else if(prev > 0.2 && b <= 0.2) ambience.signal(key, 'breath', false); // starts breathing out
-    C.lastBreath = b;
-  }
+    C.lastU = u;
+  } else if(C.app) C.lastU = -1;
   if(C.lamp){
     const lv = P.playing && C.lamp.level != null ? C.lamp.level : 1;   // a resting painting shows the lamp on
     if(lv !== C.lastLamp){ ambience.signal(key, 'lamp', lv); C.lastLamp = lv; }
@@ -3668,6 +3682,7 @@ function updateAmbience(){
   _ambCam.copy(character.position);   // distance from you, not the camera (it trails behind in 3rd person)
   _ambRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
   camera.getWorldDirection(_ambFwd); _ambFwd.y = 0; _ambFwd.normalize();
+  if(state === 'explore' && !pageOpen) ambActiveP = currentActive;   // (kept while a project page is open)
   let loudest = 0;
   paintingGroups.forEach((g, i)=>{
     const key = AMBIENCE.scenes[PROJECTS[i].title]; if(!key) return;
@@ -3678,6 +3693,10 @@ function updateAmbience(){
     let v = d > 0.01 ? ((dx*_ambFwd.x + dz*_ambFwd.z) / d - AMBIENCE.look[0]) / (AMBIENCE.look[1] - AMBIENCE.look[0]) : 1;
     v = v <= 0 ? 0 : v >= 1 ? 1 : v*v*(3 - 2*v);
     k *= v;
+    // and only the one painting that's animating right now (the one you're facing most
+    // squarely) — so a neighbour just beside it in view stays silent
+    const P = g.userData.ambP || (g.userData.ambP = animatedPaintings.find(p => p.group === g) || null);
+    if(P && P !== ambActiveP) k = 0;
     if(k <= 0 && !ambience.scenes[key]) return;   // far away and asleep: costs nothing
     const pan = d > 0.01 ? (dx*_ambRight.x + dz*_ambRight.z) / d * 0.7 : 0;
     ambience.setLevel(key, k, pan);
