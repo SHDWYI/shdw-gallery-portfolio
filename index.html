@@ -394,10 +394,21 @@
     background:rgba(5,5,7,0.94); backdrop-filter:blur(4px);
   }
   #lightbox.show{ display:flex; }
-  .lb-img{
+  .lb-img, .lb-video{
     max-width:min(92vw, 1500px); max-height:84vh; object-fit:contain;
     border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,0.6);
   }
+  .lb-video{ display:none; background:#000; }
+  #lightbox.is-video .lb-img{ display:none; }
+  #lightbox.is-video .lb-video{ display:block; min-width:min(92vw, 860px); }
+  /* video tiles: the poster with a play badge */
+  .pp-tile .pp-play{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:rgba(8,8,12,0.62); border:1px solid rgba(255,255,255,0.55); color:#fff; font-size:16px; padding-left:3px;
+    pointer-events:none; transition:background 0.2s ease, border-color 0.2s ease;
+  }
+  .pp-tile:hover .pp-play{ background:rgba(251,30,68,0.85); border-color:#fb1e44; }
   #lightbox button{
     position:absolute; background:none; border:none; cursor:pointer;
     color:#ffffff; font-family:'Space Grotesk',sans-serif; transition:color 0.2s ease;
@@ -702,6 +713,7 @@
   <button class="lb-close" aria-label="Close">✕</button>
   <button class="lb-prev" aria-label="Previous">‹</button>
   <img class="lb-img" alt="">
+  <video class="lb-video" controls playsinline loop preload="none"></video>
   <button class="lb-next" aria-label="Next">›</button>
   <div class="lb-count"></div>
 </div>
@@ -747,7 +759,7 @@ const PROJECTS = [
     desc: 'Delivered end-to-end contributions on Project Abyss as a multidisciplinary developer and artist, bridging gameplay engineering, visual production, and user experience.',
     role: [
       'Architected and implemented gameplay systems using Unreal Engine (Blueprints) and C++, prioritizing performance, scalability, and player responsiveness.',
-      'Owned asset creation pipelines from concept to final integration — ideation, modeling, sculpting, and texturing of environment assets and props, maintaining high visual fidelity within real-time constraints.',
+      'Owned asset creation pipelines from concept to final integration, ideation, modeling, sculpting, and texturing of environment assets and props, maintaining high visual fidelity within real-time constraints.',
       'Directed UI/UX production, creating and implementing the majority of in-game interfaces and iconography.',
       'Enhanced game immersion through contributions to sound design and audio integration.',
       'Played a key role in iterative development, collaborating across disciplines to refine mechanics, resolve technical challenges, and deliver a polished gameplay experience.'
@@ -782,7 +794,7 @@ const PROJECTS = [
       quote: '',
       features: [
         { icon: '⚙', title: 'Gameplay Systems', desc: 'Architected in Unreal Engine Blueprints and C++, prioritizing performance, scalability, and player responsiveness.' },
-        { icon: '◈', title: 'Asset Pipeline', desc: 'Ideation, modeling, sculpting, and texturing of environment assets and props — high fidelity within real-time constraints.' },
+        { icon: '◈', title: 'Asset Pipeline', desc: 'Ideation, modeling, sculpting, and texturing of environment assets and props. High fidelity within real-time constraints.' },
         { icon: '▣', title: 'UI/UX Direction', desc: 'Created and implemented the majority of in-game interfaces and iconography.' },
         { icon: '♫', title: 'Sound & Immersion', desc: 'Contributions to sound design and audio integration to deepen the underwater dread.' }
       ],
@@ -1003,7 +1015,7 @@ const PROJECTS = [
     id: 4, eyebrow: 'Digital Art — SHDWYI',
     title: 'REQUIEM',
     subtitle: 'Between water and stars',
-    desc: 'A quiet digital art piece — a lone silhouette drifting where deep water meets starlight. (Placeholder — full project details coming soon.)',
+    desc: 'A digital painting of a lone mermaid drifting upward through a glowing nebula — a place where deep water and starlight become the same thing.',
     tags: ['Digital Art'],
     color: 0x201c1f, accent: 0x8a8f9a,
     art: 'assets/art/requiem.webp',
@@ -1027,11 +1039,21 @@ const PROJECTS = [
       ]
     },
     page: {
-      eyebrow: 'Digital Art',
+      eyebrow: 'Digital Painting',
       role: 'Artist',
-      facts: ['Digital Art'],
-      links: { trailer: '', store: '', storeLabel: 'View Project' },
-      gallery: [], behindScenes: []
+      facts: ['Digital Painting', 'Solo Piece', 'Time-lapse'],
+      links: { trailer: 'assets/projects/requiem/behind-the-scenes/01.mp4', trailerLabel: 'Watch the Process', store: false },
+      about: 'Requiem began as a flat field of blue. Loose circular strokes blocked in a vortex, a single pool of light opened at its centre, and layer by layer the swirl was softened into deep water. A mermaid was then drawn in as clean line art, given a trail of rising bubbles, and the water was washed over with nebula textures and star dust until it read as both ocean and night sky. The figure is kept as a pure silhouette, so the light behind her tells the story.',
+      quote: 'Somewhere between the deep and the stars, she stopped needing to choose.',
+      features: [
+        { icon: '◐', title: 'Light from the Centre', desc: 'The whole composition is built around one glowing core, painted first and protected through every pass.' },
+        { icon: '≈', title: 'Water That Becomes Sky', desc: 'Nebula textures and star dust layered over the swirling water, so the scene reads as both ocean and space.' },
+        { icon: '✦', title: 'Silhouette Storytelling', desc: 'The mermaid stays a single dark shape — pose and tail carry the emotion without a single facial detail.' },
+        { icon: '▶', title: 'Full Time-lapse', desc: 'Every stage, from the first flat blue to the final tail details, recorded in a 28-second process video.' }
+      ],
+      tech: ['Digital Painting', 'Custom Brushes', 'Layer Blending', 'Texture Overlays'],
+      gallery: projectImgs('requiem/gallery', ['01.webp', '02.webp']),
+      behindScenes: projectImgs('requiem/behind-the-scenes', ['01.mp4', '02.webp', '03.webp', '04.webp', '05.webp', '06.webp', '07.webp'])
     }
   },
   {
@@ -2769,17 +2791,24 @@ function updateCamera(dt){
   camera.lookAt(target);
 }
 
+// "Step into the work" is offered for the painting you're looking at, from about the
+// distance its sound and motion come alive — the same one the animation picked (the
+// painting you face most squarely, sticky so it doesn't flicker between neighbours)
+const STEP_RANGE = 16;
 function checkProximity(){
-  let closest = null, closestDist = 8.0;
-  // the character must also be roughly FACING the painting — otherwise standing
-  // between two frames (e.g. at a teleport viewing spot) can offer the wrong one
-  const fx = Math.sin(facing), fz = Math.cos(facing);
-  paintingGroups.forEach(g=>{
-    const dx = g.userData.worldPos.x - character.position.x;
-    const dz = g.userData.worldPos.z - character.position.z;
-    const d = Math.hypot(dx, dz);
-    if(d < closestDist && (dx/d)*fx + (dz/d)*fz > 0.35){ closest = g; closestDist = d; }
-  });
+  let closest = null;
+  if(currentActive && floorDist(currentActive.group) <= STEP_RANGE) closest = currentActive.group;
+  else {   // (a painting whose living version hasn't loaded yet: same rule, by camera view)
+    camera.getWorldDirection(_camDir);
+    let best = -Infinity;
+    paintingGroups.forEach(g => {
+      if(animatedPaintings.some(p => p.group === g)) return;
+      const d = floorDist(g); if(d > STEP_RANGE) return;
+      _toArt.copy(g.userData.worldPos).sub(camera.position).normalize();
+      const dot = _toArt.dot(_camDir);
+      if(dot > ANIM_VIEW_DOT && dot - d * 0.01 > best){ best = dot - d * 0.01; closest = g; }
+    });
+  }
   nearestPainting = closest;
   document.getElementById('prompt').classList.toggle('show', !!closest && state==='explore');
 }
@@ -2814,7 +2843,7 @@ function tryEnterPainting(){
   // real-clock timing — must NOT consume clock.getDelta() here, the main
   // animate() loop owns that; sharing it halves this loop's measured time
   const startT = performance.now();
-  const dur = 450; // ms
+  const dur = Math.min(950, 450 + 35 * Math.max(0, startPos.distanceTo(flyTarget) - 4)); // ms — a longer glide from farther away
   let opened = false;
   function step(){
     const k = Math.min(1, (performance.now() - startT)/dur);
@@ -2877,7 +2906,11 @@ function renderProjectPage(proj){
   const tech = page.tech || proj.tags || [];
   const facts = page.facts || [];
   const links = page.links || {};
-  ppMedia = { gallery, bts };
+  // a local .mp4 as the trailer plays right here in the viewer instead of opening a new tab
+  const localTrailer = typeof links.trailer === 'string' && /\.mp4$/i.test(links.trailer);
+  ppMedia = { gallery, bts, trailer: localTrailer ? [links.trailer] : [] };
+  const isVid = src => /\.mp4$/i.test(src);
+  const playBadge = src => isVid(src) ? '<span class="pp-play">▶</span>' : '';
 
   const thumbs = gallery.length
     ? gallery.slice(0,6).map((src,i)=>`<img class="pp-thumb${src===hero?' on':''}" data-hero="${esc(src)}" src="${esc(imgSize(src, 512))}" alt="" loading="lazy">`).join('')
@@ -2885,12 +2918,12 @@ function renderProjectPage(proj){
 
   const extra = gallery.length - 6;
   const galleryTiles = gallery.length
-    ? gallery.slice(0,6).map((src,i)=>`<div class="pp-tile" data-lb="gallery" data-i="${i}"><img src="${esc(imgSize(src, 512))}" alt="" loading="lazy">${i===5 && extra > 0 ? `<span class="pp-more">+${extra}</span>` : ''}</div>`).join('')
+    ? gallery.slice(0,6).map((src,i)=>`<div class="pp-tile" data-lb="gallery" data-i="${i}"><img src="${esc(imgSize(src, 512))}" alt="" loading="lazy">${playBadge(src)}${i===5 && extra > 0 ? `<span class="pp-more">+${extra}</span>` : ''}</div>`).join('')
     : Array.from({length:6}, ()=> ppPh('gallery image coming soon')).join('');
 
   const btsExtra = bts.length - 4;
   const btsTiles = bts.length
-    ? bts.slice(0,4).map((src,i)=>`<div class="pp-tile" data-lb="bts" data-i="${i}"><img src="${esc(imgSize(src, 512))}" alt="" loading="lazy">${i===3 && btsExtra > 0 ? `<span class="pp-more">+${btsExtra}</span>` : ''}</div>`).join('')
+    ? bts.slice(0,4).map((src,i)=>`<div class="pp-tile" data-lb="bts" data-i="${i}"><img src="${esc(imgSize(src, 512))}" alt="" loading="lazy">${playBadge(src)}${i===3 && btsExtra > 0 ? `<span class="pp-more">+${btsExtra}</span>` : ''}</div>`).join('')
     : Array.from({length:4}, ()=> ppPh('coming soon')).join('');
 
   const featureHtml = features.length
@@ -2904,7 +2937,9 @@ function renderProjectPage(proj){
   // a URL renders a live button, '' a dimmed placeholder, false nothing at all
   const linkBtn = (url, label, cls) => url === false ? '' :
     `<a class="pp-btn${cls}${url ? '' : ' disabled'}" href="${esc(url || '#')}" target="_blank" rel="noopener">${esc(label)}</a>`;
-  const trailerBtn = linkBtn(links.trailer, (links.trailerLabel || 'Watch Trailer') + ' ▸', '');
+  const trailerBtn = localTrailer
+    ? `<span class="pp-btn" data-lb="trailer" data-i="0">${esc((links.trailerLabel || 'Watch Trailer') + ' ▸')}</span>`
+    : linkBtn(links.trailer, (links.trailerLabel || 'Watch Trailer') + ' ▸', '');
   // with no trailer, the store link steps up to be the primary (red) action
   const storeBtn = linkBtn(links.store, (links.storeLabel || 'View Project') + ' ↗', links.trailer === false ? '' : ' ghost');
 
@@ -2995,12 +3030,16 @@ function closeProjectPage(){
 // ---------- Lightbox — full-screen viewer for gallery / behind-the-scenes ----------
 const lbEl = document.getElementById('lightbox');
 const lbImg = lbEl.querySelector('.lb-img');
+const lbVid = lbEl.querySelector('.lb-video');
 let lbList = [], lbIdx = 0;
 function lbShow(){
-  lbImg.src = lbList[lbIdx];
+  const src = lbList[lbIdx], vid = /\.mp4$/i.test(src);
+  lbEl.classList.toggle('is-video', vid);
+  if(vid){ lbImg.removeAttribute('src'); lbVid.src = src; lbVid.play().catch(()=>{}); }
+  else { lbVid.pause(); lbVid.removeAttribute('src'); lbImg.src = src; }
   lbEl.querySelector('.lb-count').textContent = (lbIdx + 1) + ' / ' + lbList.length;
   // preload the neighbours so arrowing through feels instant
-  [lbIdx + 1, lbIdx - 1].forEach(i => { if(lbList[i]) new Image().src = lbList[i]; });
+  [lbIdx + 1, lbIdx - 1].forEach(i => { if(lbList[i] && !/\.mp4$/i.test(lbList[i])) new Image().src = lbList[i]; });
 }
 function openLightbox(list, idx){
   if(!list || !list.length) return;
@@ -3008,12 +3047,12 @@ function openLightbox(list, idx){
   lbShow();
   lbEl.classList.add('show');
 }
-function closeLightbox(){ lbEl.classList.remove('show'); lbImg.removeAttribute('src'); }
+function closeLightbox(){ lbEl.classList.remove('show', 'is-video'); lbImg.removeAttribute('src'); lbVid.pause(); lbVid.removeAttribute('src'); lbVid.load(); }
 function lbStep(d){ lbIdx = (lbIdx + d + lbList.length) % lbList.length; lbShow(); }
 lbEl.addEventListener('click', e=>{
   if(e.target.closest('.lb-prev')) lbStep(-1);
   else if(e.target.closest('.lb-next')) lbStep(1);
-  else if(!e.target.closest('.lb-img')) closeLightbox();   // backdrop or ✕
+  else if(!e.target.closest('.lb-img, .lb-video')) closeLightbox();   // backdrop or ✕
 });
 
 // tall images would be cropped to a sliver by the landscape slots — fit them whole
